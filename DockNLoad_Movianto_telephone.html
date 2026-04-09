@@ -1,0 +1,4051 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dashboard Portes de Quais - Gestion Opérateur</title>
+    
+    <!-- Optimisations iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Quais Réception">
+    <meta name="theme-color" content="#0284c7">
+    
+    <!-- Icône pour l'écran d'accueil iOS -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230284c7'/><text x='50' y='50' font-size='40' text-anchor='middle' dy='.35em' fill='white' font-family='Arial' font-weight='bold'>D&amp;L</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230284c7'/><text x='50' y='50' font-size='40' text-anchor='middle' dy='.35em' fill='white' font-family='Arial' font-weight='bold'>D%26L</text></svg>">
+
+    <!-- PWA Manifest (inline) -->
+    <script>
+    (function() {
+        const manifest = {
+            name: "Dock'N Load - Gestion Quais",
+            short_name: "Dock'N Load",
+            description: "Dashboard de gestion des portes de quais Movianto",
+            start_url: ".",
+            display: "standalone",
+            orientation: "portrait",
+            background_color: "#0284c7",
+            theme_color: "#0284c7",
+            icons: [{
+                src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230284c7'/><text x='256' y='256' font-size='180' text-anchor='middle' dy='.35em' fill='white' font-family='Arial' font-weight='bold'>D%26L</text></svg>",
+                sizes: "512x512",
+                type: "image/svg+xml",
+                purpose: "any maskable"
+            }]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = URL.createObjectURL(blob);
+        document.head.appendChild(link);
+    })();
+    </script>
+
+    <!-- Service Worker pour PWA (cache offline + installabilité) -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        const swCode = `
+            const CACHE_NAME = 'docknload-v1';
+            const URLS_TO_CACHE = ['./', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'];
+            self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(URLS_TO_CACHE)).then(() => self.skipWaiting())); });
+            self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
+            self.addEventListener('fetch', e => { e.respondWith(fetch(e.request).catch(() => caches.match(e.request))); });
+        `;
+        const blob = new Blob([swCode], {type: 'application/javascript'});
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+    }
+    </script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Firebase SDK (versions compatibles avec scripts globaux) -->
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database-compat.js"></script>
+
+    <!-- SheetJS pour export Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+            -webkit-tap-highlight-color: rgba(0,0,0,0);
+            -webkit-touch-callout: none;
+        }
+        
+        html {
+            -webkit-text-size-adjust: 100%;
+            touch-action: manipulation;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #e0f2fe 0%, #d1fae5 100%);
+            min-height: 100vh;
+            padding: 10px;
+            padding-bottom: 100px;
+            transition: background 0.3s ease;
+        }
+
+        body.depot-froid {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0284c7 0%, #059669 100%);
+            color: white;
+            padding: 1.5rem 1rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            opacity: 0.95;
+            font-size: 0.95rem;
+        }
+
+        .tabs {
+            display: flex;
+            width: 100%;
+            background: transparent;
+            gap: 8px;
+            padding: 4px 0 6px 0;
+            border-radius: 0;
+            border: 0;
+            box-shadow: none;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scroll-behavior: smooth;
+        }
+
+        /* Masquer scrollbar sur mobile pour interface plus propre */
+        @media (max-width: 768px) {
+            .tabs::-webkit-scrollbar {
+                display: none;
+            }
+            .tabs {
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+            }
+        }
+
+        .tabs-legend-wrapper {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+            border-radius: 16px;
+            padding: 8px 12px 10px 12px;
+            margin-bottom: 1rem;
+        }
+
+        .tab-button {
+            flex: 1;
+            min-width: 110px;
+            padding: 1rem 1rem;
+            background: #f1f5f9;
+            border: 2px solid #e2e8f0;
+            border-radius: 24px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            white-space: nowrap;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+        }
+
+        .tab-button:hover {
+            background: #e2e8f0;
+            border-color: #cbd5e1;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+
+        .tab-button.active {
+            background: white;
+            color: #0284c7;
+            border-color: #0284c7;
+            border-width: 3px;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(2,132,199,0.25);
+            transform: translateY(-3px);
+        }
+
+        .tab-button.active i {
+            color: #0284c7;
+        }
+
+        .tab-button i {
+            display: none;
+        }
+
+        /* Vue Globale : bouton bleu même inactif */
+        .tab-button[data-tab="globale"] {
+            background: #e0f2fe;
+            border-color: #bae6fd;
+            color: #0369a1;
+        }
+
+        .tab-button[data-tab="globale"] i {
+            color: #0369a1;
+        }
+
+        /* KPI : bouton vert même inactif */
+        .tab-button[data-tab="kpi"] {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+
+        .tab-button[data-tab="kpi"] i {
+            color: #166534;
+        }
+
+        /* NOUVEAU : Cariste : bouton orange même inactif */
+        .tab-button[data-tab="cariste"] {
+            background: #fed7aa;
+            border-color: #fdba74;
+            color: #9a3412;
+        }
+
+        .tab-button[data-tab="cariste"] i {
+            color: #9a3412;
+        }
+
+        /* Vue Globale : bleu "principal" quand actif */
+        .tab-button[data-tab="globale"].active {
+            background: linear-gradient(135deg, #0ea5e9, #0369a1);
+            border-color: #0284c7;
+            color: #ffffff;
+        }
+
+        .tab-button[data-tab="globale"].active i {
+            color: #ffffff;
+        }
+
+        /* KPI : vert performance quand actif */
+        .tab-button[data-tab="kpi"].active {
+            background: linear-gradient(135deg, #22c55e, #15803d);
+            border-color: #16a34a;
+            color: #ffffff;
+        }
+
+        .tab-button[data-tab="kpi"].active i {
+            color: #ffffff;
+        }
+
+        /* NOUVEAU : Cariste : orange quand actif */
+        .tab-button[data-tab="cariste"].active {
+            background: linear-gradient(135deg, #fb923c, #ea580c);
+            border-color: #f97316;
+            color: #ffffff;
+        }
+
+        .tab-button[data-tab="cariste"].active i {
+            color: #ffffff;
+        }
+
+        /* Badge de notification */
+.notification-badge {
+    position: absolute;
+    top: 5px;
+    right: 8px;
+    background: #dc2626;
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 0;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    text-align: center;
+    line-height: 26px;
+    animation: pulse-notif 2s infinite;
+    border: 3px solid white;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.6);
+    z-index: 100;
+}
+
+
+
+
+        @keyframes pulse-notif {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+            50% { 
+                transform: scale(1.1);
+                box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+            }
+        }
+
+        .tab-content {
+            display: none;
+            padding: 2rem 1.5rem;
+            min-height: 70vh;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* NOUVEAU : Styles pour l'onglet Cariste */
+        .cariste-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .cariste-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .cariste-header h2 {
+            font-size: 2rem;
+            color: #0c4a6e;
+            margin-bottom: 1rem;
+        }
+
+        .cariste-stats {
+            display: none;
+            gap: 1rem;
+            justify-content: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .cariste-stat-card {
+            background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            border: 3px solid #fdba74;
+            text-align: center;
+            min-width: 150px;
+        }
+
+        .cariste-stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #ea580c;
+        }
+
+        .cariste-stat-label {
+            font-size: 0.9rem;
+            color: #9a3412;
+            font-weight: 500;
+        }
+
+        .taches-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        /* Amélioration responsive pour tâches */
+        @media (max-width: 768px) {
+            .taches-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .tache-card {
+            background: linear-gradient(135deg, #ffffff 0%, #fef3c7 100%);
+            border: 3px solid #fbbf24;
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 6px 20px rgba(251, 191, 36, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tache-card.en-cours {
+            border-color: #3b82f6;
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .tache-card.terminee {
+            border-color: #10b981;
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            opacity: 0.7;
+        }
+
+        .tache-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(251, 191, 36, 0.3);
+        }
+
+        .tache-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid rgba(0,0,0,0.1);
+        }
+
+        .tache-numero {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0c4a6e;
+        }
+
+        .tache-status {
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .tache-status.nouvelle {
+            background: #fef3c7;
+            color: #92400e;
+            animation: pulse-tache 2s infinite;
+        }
+
+        .tache-status.en-cours {
+            background: #dbeafe;
+            color: #1e3a8a;
+        }
+
+        .tache-status.terminee {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        @keyframes pulse-tache {
+            0%, 100% { 
+                transform: scale(1);
+            }
+            50% { 
+                transform: scale(1.05);
+            }
+        }
+
+        .tache-info {
+            margin-bottom: 1rem;
+        }
+
+        .tache-info-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
+        }
+
+        .tache-info-row i {
+            width: 20px;
+            color: #0284c7;
+        }
+
+        .tache-info-row strong {
+            color: #0c4a6e;
+        }
+
+        .tache-time {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-top: 0.5rem;
+        }
+
+        .tache-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .btn-tache {
+            flex: 1;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-tache-prendre {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+        }
+
+        .btn-tache-prendre:hover {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-tache-terminer {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .btn-tache-terminer:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #64748b;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        #depot28-container .depot-row {
+            background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%);
+            border: 3px solid #60a5fa;
+            box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
+        }
+
+        #depot28-container .depot-header {
+            background: linear-gradient(135deg, #bfdbfe 0%, #dbeafe 100%);
+            border: 3px solid #3b82f6;
+        }
+
+        #depot28-container .depot-title {
+            color: #1e3a8a;
+        }
+
+        #depot28-container .depot-count {
+            color: #1e40af;
+        }
+
+        .stats-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin: 0 auto 1.5rem;
+            max-width: 1200px;
+            justify-items: center;
+        }
+
+        .stats-box {
+            background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%);
+            border: 3px solid #a5f3fc;
+            border-radius: 16px;
+            padding: 1rem 1rem;
+            overflow: hidden;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .stats-box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(8, 145, 178, 0.2);
+        }
+
+        .stats-box h3 {
+            font-size: 1.1rem;
+            color: #0c4a6e;
+            margin-bottom: 1rem;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.6rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #e0f2fe 0%, #d1fae5 100%);
+            padding: 0.9rem 0.5rem;
+            border-radius: 12px;
+            text-align: center;
+            border: 3px solid #7dd3fc;
+            transition: all 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(8, 145, 178, 0.25);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #065f46;
+            font-weight: 500;
+            line-height: 1.3;
+        }
+
+        .stat-disponible .stat-number { color: #059669; }
+        .stat-occupe .stat-number { color: #dc2626; }
+        .stat-autre .stat-number { color: #64748b; }
+        .stat-taux  .stat-number { color: #0284c7; }
+
+        .depot-row {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto 1.5rem;
+            padding: 1.25rem;
+            background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%);
+            border-radius: 20px;
+            border: 3px solid #7dd3fc;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .depot-header {
+            width: 100%;
+            max-width: 400px;
+            padding: 1rem;
+            background: white;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+            border: 3px solid #bae6fd;
+        }
+
+        .depot-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #0c4a6e;
+            margin-bottom: 0.5rem;
+        }
+
+        .depot-count {
+            font-size: 0.9rem;
+            color: #0891b2;
+            font-weight: 500;
+        }
+
+        .quais-container {
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .quai-pair {
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+            min-width: 130px;
+            position: relative;
+        }
+
+        .porte-item,
+        .zone-item,
+        .sol-item {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 700;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            position: relative;
+            user-select: none;
+            line-height: 1.2;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .checkbox-overlay {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border: 3px solid #334155;
+            border-radius: 6px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        body.selection-mode .checkbox-overlay {
+            display: flex;
+        }
+
+        .checkbox-overlay.checked {
+            background: #f59e0b;
+            border-color: #f59e0b;
+        }
+
+        .checkbox-overlay.checked::after {
+            content: "✓";
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .porte-item {
+            width: 130px;
+            height: 55px;
+            border-radius: 27px 27px 10px 10px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+            border: 3px solid #1e293b;
+            position: relative;
+        }
+
+        .zone-item {
+            width: 130px;
+            height: 70px;
+            border-radius: 10px 10px 27px 27px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+            border: 3px dashed #1e293b;
+            position: relative;
+        }
+
+        .sol-item {
+            width: 130px;
+            height: 55px;
+            border-radius: 12px;
+            border: 3px dotted #0891b2;
+            box-shadow: 0 4px 14px rgba(8, 145, 178, 0.25);
+        }
+
+        .porte-item.status-disponible {
+            background: linear-gradient(135deg, #d1fae5, #86efac);
+            color: #065f46;
+            border-color: #059669;
+        }
+
+        .zone-item.status-disponible {
+            background: linear-gradient(135deg, #bbf7d0, #86efac);
+            color: #065f46;
+            border-color: #10b981;
+        }
+
+        .sol-item.status-disponible {
+            background: linear-gradient(135deg, #a7f3d0, #6ee7b7);
+            color: #065f46;
+            border-color: #10b981;
+        }
+
+        .porte-item.status-occupe {
+            background: linear-gradient(135deg, #fecaca, #f87171);
+            color: #7f1d1d;
+            border-color: #dc2626;
+            animation: pulse-forte 2s infinite;
+        }
+
+        .zone-item.status-occupe {
+            background: linear-gradient(135deg, #fca5a5, #ef4444);
+            color: #7f1d1d;
+            border-color: #b91c1c;
+            animation: pulse-forte 2s infinite;
+        }
+
+        .sol-item.status-occupe {
+            background: linear-gradient(135deg, #fca5a5, #f87171);
+            color: #7f1d1d;
+            border-color: #dc2626;
+            animation: pulse-forte 2s infinite;
+        }
+
+        .porte-item.status-autre {
+            background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+            color: #334155;
+            border-color: #64748b;
+        }
+
+        .zone-item.status-autre {
+            background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+            color: #334155;
+            border-color: #64748b;
+        }
+
+        .sol-item.status-autre {
+            background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+            color: #334155;
+            border-color: #64748b;
+        }
+
+        .porte-item.status-etiquete {
+            background: repeating-linear-gradient(
+                45deg,
+                #dc2626,
+                #dc2626 10px,
+                #f97316 10px,
+                #f97316 20px
+            );
+            color: #ffffff;
+            border-color: #dc2626;
+        }
+
+        .zone-item.status-etiquete {
+            background: repeating-linear-gradient(
+                45deg,
+                #dc2626,
+                #dc2626 10px,
+                #f97316 10px,
+                #f97316 20px
+            );
+            color: #ffffff;
+            border-color: #dc2626;
+        }
+
+        .sol-item.status-etiquete {
+            background: repeating-linear-gradient(
+                45deg,
+                #dc2626,
+                #dc2626 10px,
+                #f97316 10px,
+                #f97316 20px
+            );
+            color: #ffffff;
+            border-color: #dc2626;
+        }
+
+        @keyframes pulse-forte {
+            0%, 100% { 
+                box-shadow: 0 4px 14px rgba(220, 38, 38, 0.3);
+                transform: scale(1);
+            }
+            50% { 
+                box-shadow: 0 6px 22px rgba(220, 38, 38, 0.6);
+                transform: scale(1.03);
+            }
+        }
+
+        /* Désactiver hover sur écrans tactiles pour meilleures performances */
+        @media (hover: hover) and (pointer: fine) {
+            .quai-pair:hover .porte-item,
+            .quai-pair:hover .zone-item,
+            .sol-item:hover {
+                transform: translateY(-4px) scale(1.03);
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #0284c7, #059669);
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 10px;
+            font-weight: 500;
+            box-shadow: 0 6px 16px rgba(2, 132, 199, 0.5);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            font-size: 0.85rem;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-10px);
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 1.5rem auto;
+            max-width: 800px;
+            padding: 1rem;
+            background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%);
+            border-radius: 16px;
+            border: 3px solid #7dd3fc;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-top: 6px;
+            padding: 2px 0 0 0;
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #1e293b;
+            padding: 0.2rem 0.5rem;
+            background: #f8fafc;
+            border-radius: 6px;
+            border: 1px dashed #cbd5e1;
+            box-shadow: none;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 2px solid transparent;
+        }
+
+        .legend-color.legend-porte {
+            background: linear-gradient(135deg, #bbf7d0, #4ade80);
+            border-color: #059669;
+        }
+
+        .legend-color.legend-zone {
+            background: #ecfdf5;
+            border: 2px dashed #10b981;
+        }
+
+        .legend-color.legend-occupe {
+            background: linear-gradient(135deg, #fecaca, #f87171);
+        }
+
+        .legend-color.legend-autre {
+            background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+            border-color: #64748b;
+        }
+
+        .legend-color.legend-etiquete {
+            background: repeating-linear-gradient(
+                45deg,
+                #dc2626,
+                #dc2626 3px,
+                #f97316 3px,
+                #f97316 6px
+            );
+            border-color: #dc2626;
+        }
+
+        .btn {
+            padding: 0.75rem 1.25rem;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+            min-height: 44px;
+        }
+
+        .btn-secondary {
+            background: #bae6fd;
+            color: #0c4a6e;
+            border-color: #7dd3fc;
+        }
+
+        .btn-secondary:hover {
+            background: #7dd3fc;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(125, 211, 252, 0.4);
+        }
+
+        .btn-export {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border-color: #059669;
+        }
+
+        #btnExport {
+            display: none;
+        }
+
+        .btn-export:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-autre {
+            background: linear-gradient(135deg, #94a3b8, #64748b);
+            color: white;
+            border-color: #475569;
+        }
+
+        .btn-autre:hover {
+            background: linear-gradient(135deg, #64748b, #475569);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(100, 116, 139, 0.4);
+        }
+
+        .btn-autre.active {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border-color: #f59e0b;
+            animation: pulse-btn 1.5s infinite;
+        }
+
+        @keyframes pulse-btn {
+            0%, 100% { box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4); }
+            50% { box-shadow: 0 8px 24px rgba(245, 158, 11, 0.7); }
+        }
+
+        .btn-cancel {
+            background: #fee2e2;
+            color: #991b1b;
+            border-color: #fca5a5;
+        }
+
+        .btn-cancel:hover {
+            background: #fca5a5;
+            transform: translateY(-3px);
+        }
+
+        .selection-info {
+            position: fixed;
+            top: 80px;
+            right: 30px;
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            color: #92400e;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+            border: 2px solid #fbbf24;
+            z-index: 999;
+            display: none;
+        }
+
+        .selection-info.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #0284c7, #059669);
+            color: white;
+            border: 3px solid #0891b2;
+            border-radius: 50%;
+            font-size: 1.4rem;
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 16px rgba(2, 132, 199, 0.5);
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .back-to-top.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (hover: hover) and (pointer: fine) {
+            .back-to-top:hover {
+                transform: translateY(-6px);
+                box-shadow: 0 8px 24px rgba(2, 132, 199, 0.7);
+                background: linear-gradient(135deg, #0369a1, #047857);
+            }
+        }
+
+        footer {
+            background: linear-gradient(135deg, #0c4a6e 0%, #065f46 100%);
+            color: white;
+            text-align: center;
+            padding: 1.25rem;
+            margin-top: 2rem;
+            border-radius: 0 0 20px 20px;
+            font-size: 0.85rem;
+        }
+
+        footer p {
+            margin: 0;
+            opacity: 0.95;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.25rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .kpi-card {
+            background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%);
+            padding: 1.5rem;
+            border-radius: 20px;
+            border: 3px solid #7dd3fc;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        @media (hover: hover) and (pointer: fine) {
+            .kpi-card:hover {
+                transform: translateY(-6px);
+                box-shadow: 0 12px 32px rgba(8, 145, 178, 0.25);
+            }
+        }
+
+        .kpi-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0.6rem 0;
+        }
+
+        .kpi-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #0c4a6e;
+            margin-bottom: 0.5rem;
+        }
+
+        @media (max-width: 1024px) {
+            .stats-section {
+                grid-template-columns: 1fr;
+                max-width: 500px;
+            }
+
+            .taches-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body { 
+                padding: 5px; 
+                padding-bottom: 80px; 
+            }
+
+            .header {
+                padding: 1rem 0.8rem;
+            }
+
+            .header h1 {
+                font-size: 1.35rem;
+            }
+
+            .header p {
+                font-size: 0.85rem;
+            }
+
+            .tab-content {
+                padding: 0.8rem 0.6rem;
+            }
+
+            .tabs {
+                gap: 4px;
+                padding: 4px 6px 6px 6px;
+            }
+
+            .tab-button {
+                min-width: 100px;
+                padding: 0.85rem 0.8rem;
+                font-size: 0.8rem;
+            }
+
+            .notification-badge {
+                width: 20px;
+                height: 20px;
+                font-size: 0.7rem;
+                line-height: 20px;
+                border: 2px solid white;
+            }
+            
+            .checkbox-overlay {
+                width: 20px;
+                height: 20px;
+                border: 2px solid #334155;
+                top: 3px;
+                right: 3px;
+            }
+            
+            .checkbox-overlay.checked::after {
+                font-size: 14px;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 0.6rem;
+                padding: 0.7rem;
+                margin: 1rem auto;
+            }
+
+            .btn {
+                width: 100%;
+                padding: 0.8rem;
+                font-size: 0.8rem;
+                min-height: 44px; /* Taille tactile optimale */
+            }
+
+            .selection-info {
+                top: 70px;
+                right: 8px;
+                left: 8px;
+                text-align: center;
+                padding: 0.8rem 1rem;
+                font-size: 0.9rem;
+            }
+
+            .stats-section {
+                grid-template-columns: 1fr;
+                gap: 0.8rem;
+            }
+
+            .stats-box {
+                padding: 0.6rem;
+            }
+
+            .stats-box h3 {
+                font-size: 0.9rem;
+                margin-bottom: 0.6rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.4rem;
+            }
+
+            .stat-card {
+                padding: 0.5rem 0.3rem;
+            }
+
+            .stat-number {
+                font-size: 1.1rem;
+            }
+            
+            .depot-row {
+                padding: 0.6rem;
+                gap: 0.7rem;
+                margin-bottom: 0.8rem;
+            }
+            
+            .depot-header {
+                padding: 0.6rem;
+            }
+            
+            .depot-title {
+                font-size: 0.95rem;
+            }
+            
+            .depot-count {
+                font-size: 0.75rem;
+            }
+            
+            .quais-container {
+                gap: 0.7rem;
+            }
+            
+            .quai-pair {
+                gap: 0.5rem;
+            }
+
+            .stat-label {
+                font-size: 0.75rem;
+            }
+
+            .taches-container {
+                grid-template-columns: 1fr;
+                gap: 0.6rem;
+            }
+
+            .tache-card {
+                padding: 0.7rem;
+            }
+
+            .tache-numero {
+                font-size: 1rem;
+            }
+
+            .tache-info-row {
+                font-size: 0.75rem;
+            }
+
+            .btn-tache {
+                padding: 0.65rem;
+                font-size: 0.75rem;
+                min-height: 42px; /* Taille tactile */
+            }
+            
+            .kpi-grid {
+                gap: 0.7rem;
+            }
+            
+            .kpi-card {
+                padding: 0.9rem;
+            }
+            
+            .kpi-number {
+                font-size: 1.8rem;
+            }
+            
+            .kpi-title {
+                font-size: 0.85rem;
+            }
+
+            .quai-pair { 
+                min-width: 85px;
+            }
+
+            .porte-item,
+            .zone-item,
+            .sol-item {
+                width: 85px;
+                font-size: 0.7rem;
+            }
+            
+            .porte-item {
+                height: 42px;
+            }
+            
+            .zone-item {
+                height: 55px;
+            }
+            
+            .sol-item {
+                height: 42px;
+            }
+
+            .back-to-top {
+                bottom: 15px;
+                right: 15px;
+                width: 44px;
+                height: 44px;
+                font-size: 1.2rem;
+            }
+
+            .legend {
+                gap: 0.25rem;
+            }
+
+            .legend-item {
+                font-size: 0.65rem;
+                padding: 0.2rem 0.35rem;
+            }
+
+            .legend-color {
+                width: 10px;
+                height: 10px;
+            }
+        }
+
+        /* Optimisation pour très petits écrans */
+        @media (max-width: 480px) {
+            body {
+                padding: 3px;
+                padding-bottom: 70px;
+            }
+            
+            .header {
+                padding: 0.8rem 0.6rem;
+            }
+            
+            .header h1 {
+                font-size: 1.2rem;
+            }
+
+            .header p {
+                font-size: 0.8rem;
+            }
+            
+            .tabs-legend-wrapper {
+                padding: 6px 8px 8px 8px;
+                margin-bottom: 0.8rem;
+            }
+
+            .tab-button {
+                min-width: 85px;
+                padding: 0.75rem 0.6rem;
+                font-size: 0.75rem;
+            }
+            
+            .quai-pair {
+                min-width: 75px;
+            }
+            
+            .porte-item,
+            .zone-item,
+            .sol-item {
+                width: 75px;
+            }
+            
+            .porte-item {
+                height: 38px;
+                font-size: 0.65rem;
+            }
+            
+            .zone-item {
+                height: 50px;
+                font-size: 0.65rem;
+            }
+            
+            .sol-item {
+                height: 38px;
+                font-size: 0.65rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stat-card {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0.5rem 0.6rem;
+            }
+
+            .stat-number {
+                font-size: 1.4rem;
+                margin-bottom: 0;
+            }
+
+            .stat-label {
+                font-size: 0.7rem;
+                text-align: left;
+            }
+            
+            .depot-row {
+                padding: 0.5rem;
+                gap: 0.6rem;
+                border-radius: 10px;
+            }
+            
+            .depot-header {
+                padding: 0.5rem;
+            }
+            
+            .depot-title {
+                font-size: 0.85rem;
+                margin-bottom: 0.3rem;
+            }
+            
+            .depot-count {
+                font-size: 0.7rem;
+            }
+            
+            .quais-container {
+                gap: 0.6rem;
+            }
+            
+            .quai-pair {
+                gap: 0.4rem;
+            }
+
+            .tache-actions {
+                flex-direction: column;
+            }
+            
+            .controls {
+                padding: 0.6rem;
+                gap: 0.5rem;
+                margin: 0.8rem auto;
+            }
+            
+            .btn {
+                padding: 0.7rem;
+                font-size: 0.75rem;
+            }
+
+            .btn-tache {
+                width: 100%;
+            }
+            
+            .kpi-grid {
+                gap: 0.6rem;
+                grid-template-columns: 1fr;
+            }
+            
+            .kpi-card {
+                padding: 0.7rem;
+            }
+            
+            .kpi-number {
+                font-size: 1.6rem;
+            }
+            
+            .kpi-title {
+                font-size: 0.8rem;
+            }
+            
+            .tache-card {
+                padding: 0.6rem;
+            }
+            
+            .tache-numero {
+                font-size: 0.95rem;
+            }
+            
+            .tache-info-row {
+                font-size: 0.7rem;
+            }
+
+            .cariste-header h2 {
+                font-size: 1.5rem;
+            }
+
+            .depot-title {
+                font-size: 1.2rem;
+            }
+
+            .quai-pair {
+                min-width: 95px;
+            }
+
+            .porte-item,
+            .zone-item,
+            .sol-item {
+                width: 95px;
+                font-size: 0.8rem;
+            }
+        }
+      /* ========== STYLES AUTHENTIFICATION ========== */
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0284c7 0%, #059669 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .login-container {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 450px;
+            width: 90%;
+        }
+
+        .login-container h2 {
+            color: #0c4a6e;
+            margin-bottom: 0.5rem;
+            font-size: 2rem;
+            text-align: center;
+        }
+
+        .login-container p {
+            color: #64748b;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: #0c4a6e;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
+            padding: 0.9rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #0284c7;
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+        }
+
+        .btn-login {
+            padding: 1rem;
+            background: linear-gradient(135deg, #0284c7, #059669);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(2, 132, 199, 0.4);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .user-info {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            z-index: 1000;
+        }
+
+        .user-info-text {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .user-info-name {
+            font-weight: 600;
+            color: #0c4a6e;
+            font-size: 0.9rem;
+        }
+
+        .user-info-role {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-transform: uppercase;
+        }
+
+        .btn-logout {
+            padding: 0.5rem 1rem;
+            background: #fee2e2;
+            color: #991b1b;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-logout:hover {
+            background: #fca5a5;
+        }
+
+        .responsable-code-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+  border: 2px solid #8b5cf6;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.2);
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.responsable-code-container label {
+  font-weight: 700;
+  color: #6d28d9;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.responsable-code-container input {
+  width: 120px;
+  max-width: 90%;
+  padding: 0.75rem;
+  border: 2px solid #c4b5fd;
+  border-radius: 12px;
+  font-size: 1rem;
+  text-align: center;
+  background: white;
+}
+
+.responsable-code-container input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.responsable-code-container .btn-login {
+  width: 120px;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  font-size: 1rem;
+}
+
+.code-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+
+        .roles-grid {
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  margin: 2rem auto;
+  max-width: 700px;
+  flex-wrap: wrap;
+}
+
+
+.role-btn {
+    padding: 1.5rem 1rem;
+    border: 3px solid #e2e8f0;
+    border-radius: 16px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    font-family: inherit;
+}
+
+.role-btn i {
+  display: none !important;
+}
+.role-btn {
+  flex: 1;
+  max-width: 240px;
+  min-width: 200px;
+}
+
+
+.role-btn:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
+
+.cariste-role { border-color: #fb923c; color: #9a3412; }
+.cariste-role:hover { border-color: #f97316; background: linear-gradient(135deg, #fed7aa, #fdba74); }
+
+.reception-role { border-color: #10b981; color: #065f46; }
+.reception-role:hover { border-color: #059669; background: linear-gradient(135deg, #d1fae5, #a7f3d0); }
+
+.responsable-role { border-color: #8b5cf6; color: #6d28d9; }
+.responsable-role:hover { border-color: #7c3aed; background: linear-gradient(135deg, #ede9fe, #ddd6fe); }
+
+.role-btn i { font-size: 3rem; margin-bottom: 1rem; }
+.role-btn h3 { font-size: 1.3rem; font-weight: 700; margin: 0 0 0.5rem 0; }
+.role-btn p { margin: 0; font-size: 0.9rem; opacity: 0.8; }
+.role-btn p small { font-size: 0.8rem; }
+
+
+        
+        /* Sections distinctes pour zones et sol */
+        .zones-section,
+        .sol-section {
+            width: 100%;
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #0c4a6e;
+            margin-bottom: 1.5rem;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #e0f2fe, #dbeafe);
+            border-radius: 12px;
+            border: 2px solid #7dd3fc;
+        }
+
+        .section-separator {
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #7dd3fc, transparent);
+            margin: 2rem 0;
+        }
+        
+        .separator-with-label {
+            width: 100%;
+            margin: 2rem 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        
+        .separator-with-label::before {
+            content: '';
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #7dd3fc, transparent);
+            margin-bottom: 0.75rem;
+        }
+        
+        .separator-with-label span {
+            padding: 0 15px;
+            color: #0284c7;
+            font-weight: bold;
+            font-size: 0.95rem;
+        }
+
+        .sol-section .quais-container {
+            justify-content: center;
+        }
+
+                /* Centrer les dépôts dans les onglets */
+        #depot7-container,
+        #depot56-container,
+        #depot3-container,
+        #depot28-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+    </style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<div id="loginOverlay" class="login-overlay">
+    <div class="login-container">
+        <h2>Choisir votre rôle</h2>
+        <p>Sélectionnez votre profil pour accéder à Dock'n'Load</p>
+        
+        <div class="roles-grid">
+            <button class="role-btn cariste-role" onclick="selectRole('cariste')">
+                <h3>Cariste</h3>
+                <p>Tâches et missions</p>
+            </button>
+            
+            <button class="role-btn reception-role" onclick="selectRole('reception')">
+                <h3>Réception</h3>
+                <p>Gestion arrivées</p>
+            </button>
+            
+            <button class="role-btn responsable-role" onclick="showResponsableCode()">
+                <h3>Responsable</h3>
+                <p>Accès complet <br><small>Code requis</small></p>
+            </button>
+        </div>
+        
+        <div id="responsableCodeSection" class="responsable-code-container" style="display: none;">
+  <label for="responsableCode"> Code Responsable</label>
+  <div class="code-input-row">
+    <input type="password" id="responsableCode" placeholder="Entrez le code secret" maxlength="6">
+    <button class="btn-login" onclick="checkResponsableCode()">Accéder Responsable</button>
+  </div>
+  <div id="responsableError" class="error-message" style="display: none;"></div>
+</div>
+
+        
+        <div id="loginError" class="error-message" style="display: none;"></div>
+    </div>
+</div>
+
+
+<div id="userInfo" class="user-info" style="display: none;">
+    <div class="user-info-text">
+        <div class="user-info-name" id="userName"></div>
+        <div class="user-info-role" id="userRole"></div>
+    </div>
+    <button class="btn-logout" onclick="logout()">
+        Déconnexion
+    </button>
+</div>
+
+<div class="selection-info" id="selectionInfo">
+    <span id="selectionCount">0</span> élément(s) sélectionné(s)
+</div>
+
+<button class="back-to-top" id="backToTop" title="Retour en haut">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<div class="container">
+    <div class="header">
+        <h1>Dock'n'Load</h1>
+        <p>Cliquez sur une porte de quai ou une zone pour alterner entre Disponible et Occupé</p>
+    </div>
+
+    <div class="tabs-legend-wrapper">
+        <div class="tabs">
+            <button class="tab-button active" data-tab="globale">Vue Globale</button>
+            <button class="tab-button" data-tab="depot7">Dépôt 7</button>
+            <button class="tab-button" data-tab="depot56">Dépôt 5/6</button>
+            <button class="tab-button" data-tab="depot3">Dépôt 3</button>
+            <button class="tab-button" data-tab="depot28">Dépôt 2/8°C</button>
+            <button class="tab-button" data-tab="cariste">
+Cariste
+                <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
+            </button>
+            <button class="tab-button" data-tab="kpi" style="display:none;">KPI Temps Réel</button>
+
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color legend-porte"></div>
+                <span><strong>Porte de quai</strong> (bordure pleine)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="legend-color legend-zone"></div>
+                <span><strong>Zone + Sol</strong> (bordure pointillée)</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="legend-color legend-etiquete"></div>
+                <span>Étiquetés</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="legend-color legend-occupe"></div>
+                <span>Occupé</span>
+            </div>
+
+            <div class="legend-item">
+                <div class="legend-color legend-autre"></div>
+                <span>Autre (Maintenance/Hors service)</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+    <button class="btn btn-secondary" onclick="resetAll()">Reset Tout</button>
+    <button class="btn btn-autre" id="btnSelectionMode" onclick="toggleSelectionMode()" style="display:none;">
+
+        Sélectionner pour "Autre"
+    </button>
+    <button class="btn btn-autre" id="btnMarquerAutre" onclick="marquerCommeAutre()" style="display:none;">
+        Marquer comme Autre (<span id="countSelected">0</span>)
+    </button>
+    <button class="btn btn-cancel" id="btnCancelSelection" onclick="cancelSelection()" style="display:none;">
+        Annuler
+    </button>
+        <button class="btn btn-secondary" id="btnRetirerAutreMode" onclick="toggleRetirerAutreMode()" style="display:none;">
+        Retirer statut "Autre"
+    </button>
+    <button class="btn btn-export" id="btnConfirmerRetirer" onclick="retirerStatutAutre()" style="display:none;">
+        Confirmer retrait (<span id="countSelectedRetirer">0</span>)
+    </button>
+    <button class="btn btn-cancel" id="btnCancelRetirer" onclick="cancelRetirerAutre()" style="display:none;">
+        Annuler
+    </button>
+
+</div>
+
+    <div id="globale" class="tab-content active">
+        <div class="stats-section">
+            <div class="stats-box">
+                <h3>Statistiques Portes de Quais</h3>
+                <div class="stats-grid" id="stats-portes-globale"></div>
+            </div>
+            <div class="stats-box">
+                <h3>Statistiques Zones + Sols</h3>
+                <div class="stats-grid" id="stats-zones-globale"></div>
+            </div>
+        </div>
+        <div id="depots-container"></div>
+    </div>
+
+    <div id="depot7" class="tab-content">
+        <div class="stats-section" id="stats-section-depot7"></div>
+        <div id="depot7-container"></div>
+    </div>
+
+    <div id="depot56" class="tab-content">
+        <div class="stats-section" id="stats-section-depot56"></div>
+        <div id="depot56-container"></div>
+    </div>
+
+    <div id="depot3" class="tab-content">
+        <div class="stats-section" id="stats-section-depot3"></div>
+        <div id="depot3-container"></div>
+    </div>
+
+    <div id="depot28" class="tab-content">
+        <div class="stats-section" id="stats-section-depot28"></div>
+        <div id="depot28-container"></div>
+    </div>
+
+    <!-- NOUVEAU : Onglet Cariste -->
+    <div id="cariste" class="tab-content">
+        <div class="cariste-container">
+            <div class="cariste-header">
+                <h2>Espace Cariste</h2>
+                <p style="color: #64748b;">Gérez les zones à décharger assignées par la réception</p>
+            </div>
+
+            <div class="cariste-stats">
+                <div class="cariste-stat-card">
+                    <div class="cariste-stat-number" id="stat-nouvelles">0</div>
+                    <div class="cariste-stat-label">Nouvelles tâches</div>
+                </div>
+                <div class="cariste-stat-card">
+                    <div class="cariste-stat-number" id="stat-en-cours">0</div>
+                    <div class="cariste-stat-label">En cours</div>
+                </div>
+                <div class="cariste-stat-card">
+                    <div class="cariste-stat-number" id="stat-terminees">0</div>
+                    <div class="cariste-stat-label">Terminées aujourd'hui</div>
+                </div>
+            </div>
+
+            <div id="taches-container" class="taches-container">
+                <!-- Les tâches seront générées ici -->
+            </div>
+
+            <div id="empty-state" class="empty-state">
+                <h3>Aucune tâche pour le moment</h3>
+                <p>Les nouvelles affectations apparaîtront ici automatiquement</p>
+            </div>
+        </div>
+    </div>
+
+<div id="kpi" class="tab-content">
+    <h2 style="font-size: 2rem; color: #0c4a6e; margin-bottom: 2.5rem; text-align: center;">
+        KPI Temps Réel
+    </h2>
+
+
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-title">Taux Occupation Global</div>
+                <div class="kpi-number" style="color: #dc2626;" id="kpi-taux-global">0</div>
+                <p id="kpi-global-sub">Données temps réel</p>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Total Déchargements</div>
+                <div class="kpi-number" style="color: #059669;" id="kpi-total-dechargements">0</div>
+                <p>Aujourd'hui</p>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Temps Moyen Déch.</div>
+                <div class="kpi-number" style="color: #0284c7;" id="kpi-temps-moyen">0m</div>
+                <p>Par déchargement</p>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Total Occupés</div>
+                <div class="kpi-number" style="color: #dc2626;" id="kpi-total-occupe">0</div>
+                <p>Dépôt le plus occupé : <span id="kpi-depot-plus-occupe">-</span></p>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>
+            Made by <strong>Quentin Boceno</strong> and 
+            <strong>Theo Buchez</strong> and <strong>Jubril Amokun</strong>
+        </p>
+    </footer>
+</div>
+
+<script>
+    // ========== VARIABLES GLOBALES ==========
+    const statuts = ["disponible", "occupe", "etiquete"];
+    let statutIndex = { disponible: 0, occupe: 1, etiquete: 2 };
+
+    const etatQuais = {};
+    const historiqueQuais = {};
+    let totalModifications = 0;
+    let totalDechargements = 0;
+
+    let selectionMode = false;
+    let selectedElements = new Set();
+
+    // NOUVEAU : Variables pour gestion cariste
+    let tachesCariste = [];
+    let nextTacheId = 1;
+
+
+    // ========== CONFIGURATION FIREBASE ==========
+    /* 
+    INSTRUCTIONS FIREBASE:
+    1. Créez un projet sur https://console.firebase.google.com/
+    2. Activez "Realtime Database" (Build > Realtime Database)
+    3. Configurez les règles de sécurité (exemple développement):
+       {
+         "rules": {
+           ".read": true,
+           ".write": true
+         }
+       }
+    4. Copiez votre config (Paramètres projet > Applications)
+    5. Remplacez les valeurs ci-dessous
+    */
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyB_8q-0KDWdAU9EbyQK9LkUskbKUAaCRHo",
+  authDomain: "docknload-moussy.firebaseapp.com",
+  databaseURL: "https://docknload-moussy-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "docknload-moussy",
+  storageBucket: "docknload-moussy.firebasestorage.app",
+  messagingSenderId: "157898632491",
+  appId: "1:157898632491:web:a3a94c60cb3760cd16696e"
+};
+
+
+
+    // Initialiser Firebase
+    let database = null;
+    let etatQuaisRef = null;
+    let historiqueQuaisRef = null;
+    let tachesRef = null;
+    let statsRef = null;
+    let firebaseInitialized = false;
+
+    // ========== INITIALISATION FIREBASE ==========
+    
+    function initializeFirebase() {
+        try {
+            // Charger les SDK Firebase
+            if (typeof firebase === 'undefined') {
+                console.error('❌ Firebase SDK non chargé!');
+                return;
+            }
+
+            // Initialiser Firebase app
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+                console.log('✅ Firebase app initialisé');
+            }
+
+            // Obtenir références
+            database = firebase.database();
+            etatQuaisRef = database.ref('etatQuais');
+            historiqueQuaisRef = database.ref('historiqueQuais');
+            tachesRef = database.ref('tachesCariste');
+            statsRef = database.ref('stats');
+            
+            firebaseInitialized = true;
+            console.log('✅ Références Firebase créées');
+
+            // Charger les données depuis Firebase
+            loadDataFromFirebase();
+            
+            // Activer les écouteurs en temps réel
+            startFirebaseListeners();
+            
+        } catch (err) {
+            console.error('❌ Erreur initialisation Firebase:', err);
+            firebaseInitialized = false;
+        }
+    }
+
+    function loadDataFromFirebase() {
+        if (!firebaseInitialized) return;
+
+        // Charger état des quais
+        etatQuaisRef.once('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                Object.assign(etatQuais, data);
+            }
+            ensureDataStructureIsComplete();
+            console.log('📥 État des quais chargé depuis Firebase');
+        }).catch(err => console.error('Erreur chargement état:', err));
+
+        // Charger historique
+        historiqueQuaisRef.once('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                Object.assign(historiqueQuais, data);
+            }
+            ensureDataStructureIsComplete();
+            console.log('📥 Historique chargé depuis Firebase');
+        }).catch(err => console.error('Erreur chargement historique:', err));
+
+        // Charger tâches
+        tachesRef.once('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                tachesCariste = data;
+                afficherTaches();
+                console.log('📥 Tâches chargées depuis Firebase');
+            }
+        }).catch(err => console.error('Erreur chargement tâches:', err));
+
+        // Charger stats
+        statsRef.once('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                totalModifications = data.totalModifications || 0;
+                totalDechargements = data.totalDechargements || 0;
+                console.log('📥 Stats chargées depuis Firebase');
+            }
+        }).catch(err => console.error('Erreur chargement stats:', err));
+    }
+
+    // ========== SYSTÈME D'AUTHENTIFICATION FIREBASE ==========
+    
+    let currentUser = null;
+    let auth = null;
+
+   
+
+    function showLoginScreen() {
+        document.getElementById('loginOverlay').style.display = 'flex';
+        document.querySelector('.container').style.display = 'none';
+        document.getElementById('userInfo').style.display = 'none';
+    }
+
+    function hideLoginScreen() {
+        document.getElementById('loginOverlay').style.display = 'none';
+        document.querySelector('.container').style.display = 'block';
+        document.getElementById('userInfo').style.display = 'flex';
+    }
+
+
+    function adaptInterfaceForRole(role) {
+        // Cacher certains onglets selon le rôle
+        const tabs = {
+            reception: ['globale', 'depot7', 'depot56', 'depot3', 'depot28'],
+            cariste: ['cariste'],
+            responsable: ['globale', 'depot7', 'depot56', 'depot3', 'depot28', 'cariste', 'kpi']
+        };
+        
+        const allowedTabs = tabs[role] || [];
+        
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            const tabName = btn.dataset.tab;
+            if (!allowedTabs.includes(tabName)) {
+                btn.style.display = 'none';
+            } else {
+                btn.style.display = 'flex';
+            }
+        });
+        
+        // Activer le premier onglet visible
+        const firstVisibleTab = document.querySelector('.tab-button[style*="display: flex"], .tab-button:not([style*="display: none"])');
+        if (firstVisibleTab) {
+            firstVisibleTab.click();
+        }
+        
+        // Gérer l'affichage des contrôles selon le rôle
+        const controls = document.querySelector('.controls');
+        const btnSelectionMode = document.getElementById('btnSelectionMode');
+        const btnRetirerAutreMode = document.getElementById('btnRetirerAutreMode');
+        
+        if (role === 'cariste') {
+            // Masquer complètement les contrôles pour les caristes
+            if (controls) controls.style.display = 'none';
+        } else {
+            // Pour reception et responsable, afficher le conteneur et les boutons
+            if (controls) controls.style.display = 'flex';
+            if (btnSelectionMode) {
+                btnSelectionMode.style.display = 'inline-block';
+            }
+            if (btnRetirerAutreMode) {
+                btnRetirerAutreMode.style.display = 'inline-block';
+            }
+        }
+    }
+
+   
+
+    function logout() {
+    if (confirm('Voulez-vous vous déconnecter ?')) {
+        currentRole = null;
+        document.getElementById('userInfo').style.display = 'none';
+        showLoginScreen();
+        document.querySelector('[data-tab="globale"]').click();
+        showToast('Déconnexion réussie');
+    }
+}
+
+    function showLoginScreen() {
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.querySelector('.container').style.display = 'none';
+    document.getElementById('userInfo').style.display = 'none';
+}
+
+
+    // ========== FIN AUTHENTIFICATION ==========
+
+
+
+        const configDepots = {
+    depot7: {
+        portes: ["S0R","S01","S02","S03","S04","S05","S06","S07","S08","S09","S10","S11","S12","S13","S14","S15","S16","S17","S18","S19"],
+        zones:  ["S0R","S01","S02","S03","S04","S05","S06","S07","S08","S09","S10","S11","S12","S13","S14","S15","S16","S17","S18","S19"],
+        sol: ["S13bis","S14bis","S15bis","S16bis","S17bis","S18bis","S19bis"]
+    },
+    depot56: {
+        portes: ["89","90","91"],
+        zones:  ["89","90","91"],
+        sol: ["Sol 91A","Sol 91B","Sol 91C","Sol 91D","Sol 91E"]
+    },
+    depot3: {
+        portes: ["51"],
+        zones:  ["51"],
+        sol: ["Sol 51A","Sol 51B","Sol 51C","Sol 51D"]
+    },
+    depot28: {
+        portes: ["16","92","93"],
+        zones:  ["16","92","93"],
+        sol: []
+    }
+};
+
+
+
+    // ========== FONCTIONS SYNCHRONISATION FIREBASE ==========
+
+    function syncEtatQuais() {
+        if (!firebaseInitialized) return;
+        etatQuaisRef.set(etatQuais).catch(err => console.error("Sync état:", err));
+    }
+
+    function syncHistorique() {
+        if (!firebaseInitialized) return;
+        historiqueQuaisRef.set(historiqueQuais).catch(err => console.error("Sync histo:", err));
+    }
+
+    function syncTaches() {
+        if (!firebaseInitialized) return;
+        tachesRef.set(tachesCariste).catch(err => console.error("Sync tâches:", err));
+    }
+
+    function syncStats() {
+        if (!firebaseInitialized) return;
+        statsRef.set({
+            totalModifications: totalModifications,
+            totalDechargements: totalDechargements,
+            lastUpdate: Date.now()
+        }).catch(err => console.error("Sync stats:", err));
+    }
+
+    function startFirebaseListeners() {
+        if (!firebaseInitialized) return;
+
+        // Écoute état des quais
+        etatQuaisRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && JSON.stringify(data) !== JSON.stringify(etatQuais)) {
+                Object.assign(etatQuais, data);
+                // NE PAS appeler sauvegarderLocal() ici pour éviter boucle infinie
+                // localStorage est juste synchronisé en cas de besoin
+                localStorage.setItem('etatQuais', JSON.stringify(etatQuais));
+                
+                const activeTab = document.querySelector('.tab-button.active')?.dataset.tab;
+                if (activeTab === 'globale') {
+                    genererVueGlobale();
+                } else if (activeTab && activeTab !== 'kpi' && activeTab !== 'cariste') {
+                    const container = document.getElementById(activeTab + '-container');
+                    if (container) {
+                        container.innerHTML = '';
+                        const titre = activeTab
+                            .replace('depot7','Dépôt 7')
+                            .replace('depot56','Dépôt 5/6')
+                            .replace('depot3','Dépôt 3')
+                            .replace('depot28','Dépôt 2/8°C');
+                        genererDepotRow(container, activeTab, titre);
+                    }
+                }
+                
+                mettreAJourTousLesStats();
+            }
+        });
+
+        // Écoute historique
+        historiqueQuaisRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && JSON.stringify(data) !== JSON.stringify(historiqueQuais)) {
+                Object.assign(historiqueQuais, data);
+                localStorage.setItem('historiqueQuais', JSON.stringify(historiqueQuais));
+                mettreAJourKPI();
+            }
+        });
+
+        // Écoute tâches cariste
+        tachesRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                // Faire un merge intelligent au lieu de remplacer complètement
+                if (Array.isArray(data)) {
+                    // Si data est un array, fusionner les tâches par ID
+                    const newTasksMap = {};
+                    data.forEach(t => {
+                        newTasksMap[t.id] = t;
+                    });
+                    
+                    // Mettre à jour les tâches existantes et ajouter les nouvelles
+                    tachesCariste.forEach((t, idx) => {
+                        if (newTasksMap[t.id]) {
+                            // Tâche existe dans Firebase: mettre à jour sauf si elle a changé localement
+                            // Comparer les timestamps pour voir si Firebase a une version plus récente
+                            if (newTasksMap[t.id].timestampFin === undefined && t.timestampFin !== undefined) {
+                                // Cas local: tâche terminée, Firebase pas encore à jour - garder local
+                            } else {
+                                tachesCariste[idx] = newTasksMap[t.id];
+                            }
+                            delete newTasksMap[t.id];
+                        }
+                    });
+                    
+                    // Ajouter les tâches qui n'existaient pas localement
+                    Object.values(newTasksMap).forEach(t => {
+                        tachesCariste.push(t);
+                    });
+                } else if (typeof data === 'object') {
+                    // Si data est un objet (converti depuis array par Firebase)
+                    const tachesArray = Object.values(data);
+                    if (JSON.stringify(tachesArray) !== JSON.stringify(tachesCariste)) {
+                        tachesCariste = tachesArray;
+                    }
+                }
+                
+                localStorage.setItem('tachesCariste', JSON.stringify(tachesCariste));
+                afficherTaches();
+                updateNotificationBadge();
+            }
+        });
+
+        // Écoute stats
+        statsRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                totalModifications = data.totalModifications || 0;
+                totalDechargements = data.totalDechargements || 0;
+                localStorage.setItem('totalModifications', totalModifications.toString());
+                localStorage.setItem('totalDechargements', totalDechargements.toString());
+                mettreAJourKPI();
+            }
+        });
+
+        console.log("🔥 Firebase listeners actifs - Synchronisation temps réel OK");
+    }
+
+        // Initialisation
+    Object.keys(configDepots).forEach(depot => {
+        etatQuais[depot] = {
+            portes: configDepots[depot].portes.map(() => "disponible"),
+            zones:  configDepots[depot].zones.map(() => "disponible"),
+            sol:    configDepots[depot].sol ? configDepots[depot].sol.map(() => "disponible") : []
+        };
+
+        historiqueQuais[depot] = {
+            portes: configDepots[depot].portes.map(() => ({ timestampDebut: null, totalDuree: 0, nbDechargements: 0 })),
+            zones:  configDepots[depot].zones.map(() => ({ timestampDebut: null, totalDuree: 0, nbDechargements: 0 })),
+            sol:    configDepots[depot].sol ? configDepots[depot].sol.map(() => ({ timestampDebut: null, totalDuree: 0, nbDechargements: 0 })) : []
+        };
+    });
+
+    // ========== FONCTIONS CARISTE ==========
+
+    function creerTacheCariste(depot, type, index, nomZone) {
+        const tache = {
+            id: nextTacheId++,
+            depot: depot,
+            type: type,
+            index: index,
+            nomZone: nomZone,
+            status: 'nouvelle', // nouvelle, en-cours, terminee
+            timestampCreation: Date.now(),
+            timestampDebut: null,
+            timestampFin: null
+        };
+
+        tachesCariste.push(tache);
+        sauvegarderTaches();
+        
+        // Synchroniser avec Firebase immédiatement
+        if (firebaseInitialized) {
+            syncTaches();
+        }
+        
+        afficherTaches();
+        updateNotificationBadge();
+
+        // Notification sonore et visuelle
+        montrerToast(`🔔 Nouvelle tâche cariste : ${nomZone} (${getDepotNom(depot)})`);
+
+        return tache;
+    }
+
+    function afficherTaches() {
+        const container = document.getElementById('taches-container');
+        const emptyState = document.getElementById('empty-state');
+
+        // Filtrer les tâches (exclure les terminées) et trier
+        const tachesActives = tachesCariste.filter(t => t.status !== 'terminee');
+        
+        const tachesSorted = [...tachesActives].sort((a, b) => {
+            const ordre = { 'nouvelle': 0, 'en-cours': 1 };
+            if (ordre[a.status] !== ordre[b.status]) {
+                return ordre[a.status] - ordre[b.status];
+            }
+            return b.timestampCreation - a.timestampCreation;
+        });
+
+        // Afficher état vide si aucune tâche
+        if (tachesSorted.length === 0) {
+            emptyState.style.display = 'block';
+            container.innerHTML = '';
+            return;
+        }
+
+        emptyState.style.display = 'none';
+
+        container.innerHTML = tachesSorted.map(tache => {
+            const depotNom = getDepotNom(tache.depot);
+            const typeNom = tache.type === 'portes' ? 'Porte' : (tache.type === 'zones' ? 'Zone' : 'Sol');
+            const tempsEcoule = tache.timestampDebut ? getTempsEcoule(tache.timestampDebut) : '';
+
+            let boutons = '';
+            if (tache.status === 'nouvelle') {
+                boutons = `
+                    <button class="btn-tache btn-tache-prendre" onclick="prendreEnCharge(${tache.id})">
+                        Prendre en charge
+                    </button>
+                `;
+            } else if (tache.status === 'en-cours') {
+                boutons = `
+                    <button class="btn-tache btn-tache-terminer" onclick="terminerTache(${tache.id})">
+                        Terminer
+                    </button>
+                `;
+            }
+
+            return `
+                <div class="tache-card ${tache.status}">
+                    <div class="tache-header">
+                        <div class="tache-numero">
+                            ${tache.nomZone}
+                        </div>
+                        <div class="tache-status ${tache.status}">
+                            ${tache.status === 'nouvelle' ? 'Nouvelle' : 
+                              tache.status === 'en-cours' ? 'En cours' : 
+                              'Terminée'}
+                        </div>
+                    </div>
+
+                    <div class="tache-info">
+                        <div class="tache-info-row">
+                            <span><strong>Dépôt:</strong> ${depotNom}</span>
+                        </div>
+                        <div class="tache-info-row">
+                            <span><strong>Type:</strong> ${typeNom}</span>
+                        </div>
+                        ${tache.status === 'en-cours' ? `
+                        <div class="tache-info-row">
+                            <span><strong>Durée:</strong> ${tempsEcoule}</span>
+                        </div>
+                        ` : ''}
+                        <div class="tache-time">
+                            Créée ${getTempsDepuis(tache.timestampCreation)}
+                        </div>
+                    </div>
+
+                    <div class="tache-actions">
+                        ${boutons}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        updateStatsCariste();
+    }
+
+    function prendreEnCharge(tacheId) {
+    const tache = tachesCariste.find(t => t.id === tacheId);
+    if (!tache) return;
+
+    tache.status = 'en-cours';
+    tache.timestampDebut = Date.now();
+
+    // NOUVEAU : Passer la ZONE correspondante en "occupé" (rouge)
+    // La tâche est créée sur la PORTE, mais on passe la ZONE en rouge
+    etatQuais[tache.depot]['zones'][tache.index] = 'occupe';
+    
+    // Démarrer le chronomètre pour l'historique de la ZONE
+    historiqueQuais[tache.depot]['zones'][tache.index].timestampDebut = Date.now();
+
+    sauvegarderTaches();
+    sauvegarderLocal();
+    
+    // Synchroniser avec Firebase
+    if (firebaseInitialized) {
+        syncTaches();
+        syncEtatQuais();
+        syncHistorique();
+    }
+    
+    afficherTaches();
+    updateNotificationBadge();
+    mettreAJourTousLesStats();
+
+    // Rafraîchir l'affichage des dépôts
+    const activeTab = document.querySelector('.tab-button.active').dataset.tab;
+    if (activeTab === 'globale') {
+        genererVueGlobale();
+    } else if (activeTab !== 'kpi' && activeTab !== 'cariste') {
+        const container = document.getElementById(`${activeTab}-container`);
+        container.innerHTML = "";
+        const titre = activeTab
+            .replace("depot7","Dépôt 7")
+            .replace("depot56","Dépôt 5/6")
+            .replace("depot3","Dépôt 3")
+            .replace("depot28","Dépôt 2/8°C");
+        genererDepotRow(container, activeTab, titre);
+    }
+
+    montrerToast(`Tâche ${tache.nomZone} prise en charge`);
+}
+
+
+
+
+    function terminerTache(tacheId) {
+    const tache = tachesCariste.find(t => t.id === tacheId);
+    if (!tache) return;
+
+    tache.status = 'terminee';
+    tache.timestampFin = Date.now();
+
+    // MODIFIÉ : Libérer la ZONE correspondante (pas la PORTE)
+    if (etatQuais[tache.depot]['zones'][tache.index] === 'occupe') {
+        etatQuais[tache.depot]['zones'][tache.index] = 'disponible';
+        
+        // Mettre à jour l'historique de la ZONE
+        const hist = historiqueQuais[tache.depot]['zones'][tache.index];
+        if (hist.timestampDebut) {
+            const duree = Date.now() - hist.timestampDebut;
+            hist.totalDuree += duree;
+            hist.nbDechargements++;
+            hist.timestampDebut = null;
+            totalDechargements++;
+        }
+    }
+
+    sauvegarderTaches();
+    sauvegarderLocal();
+    
+    // Synchroniser avec Firebase
+    if (firebaseInitialized) {
+        syncTaches();
+        syncEtatQuais();
+        syncHistorique();
+        syncStats();
+    }
+    
+    afficherTaches();
+    updateNotificationBadge();
+    mettreAJourTousLesStats();
+
+    // Rafraîchir l'affichage
+    const activeTab = document.querySelector('.tab-button.active').dataset.tab;
+    if (activeTab === 'globale') {
+        genererVueGlobale();
+    } else if (activeTab !== 'kpi' && activeTab !== 'cariste') {
+        const container = document.getElementById(`${activeTab}-container`);
+        container.innerHTML = "";
+        const titre = activeTab
+            .replace("depot7","Dépôt 7")
+            .replace("depot56","Dépôt 5/6")
+            .replace("depot3","Dépôt 3")
+            .replace("depot28","Dépôt 2/8°C");
+        genererDepotRow(container, activeTab, titre);
+    }
+
+    montrerToast(`Tâche ${tache.nomZone} terminée - Zone libre`);
+    
+    // Nettoyer les tâches terminées après 30 secondes
+    setTimeout(() => {
+        tachesCariste = tachesCariste.filter(t => t.status !== 'terminee' || (Date.now() - t.timestampFin) < 5000);
+        sauvegarderTaches();
+        if (firebaseInitialized) {
+            syncTaches();
+        }
+    }, 5000);
+}
+
+
+
+    function updateStatsCariste() {
+        const nouvelles = tachesCariste.filter(t => t.status === 'nouvelle').length;
+        const enCours = tachesCariste.filter(t => t.status === 'en-cours').length;
+        const terminees = tachesCariste.filter(t => {
+            if (t.status !== 'terminee') return false;
+            const today = new Date().setHours(0,0,0,0);
+            return t.timestampFin >= today;
+        }).length;
+
+        document.getElementById('stat-nouvelles').textContent = nouvelles;
+        document.getElementById('stat-en-cours').textContent = enCours;
+        document.getElementById('stat-terminees').textContent = terminees;
+    }
+
+    function updateNotificationBadge() {
+        const nouvelles = tachesCariste.filter(t => t.status === 'nouvelle').length;
+        const badge = document.getElementById('notificationBadge');
+
+        if (nouvelles > 0) {
+            badge.textContent = nouvelles;
+            badge.style.display = 'block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    function getDepotNom(depot) {
+        const noms = {
+            'depot7': 'Dépôt 7',
+            'depot56': 'Dépôt 5/6',
+            'depot3': 'Dépôt 3',
+            'depot28': 'Dépôt 2/8°C'
+        };
+        return noms[depot] || depot;
+    }
+
+    function getTempsEcoule(timestamp) {
+        const diff = Date.now() - timestamp;
+        const minutes = Math.floor(diff / 60000);
+        const secondes = Math.floor((diff % 60000) / 1000);
+        return `${minutes}m ${secondes}s`;
+    }
+
+    function getTempsDepuis(timestamp) {
+        const diff = Date.now() - timestamp;
+        const minutes = Math.floor(diff / 60000);
+        const heures = Math.floor(diff / 3600000);
+
+        if (heures > 0) {
+            return `il y a ${heures}h ${minutes % 60}m`;
+        }
+        return `il y a ${minutes}m`;
+    }
+
+    function sauvegarderTaches() {
+        try {
+            localStorage.setItem('tachesCariste', JSON.stringify(tachesCariste));
+            localStorage.setItem('nextTacheId', nextTacheId.toString());
+            // NE PAS synchroniser Firebase ici - évite boucle infinie
+        } catch (e) {
+            console.error('Erreur sauvegarde tâches:', e);
+        }
+    }
+
+    function chargerTaches() {
+        try {
+            const saved = localStorage.getItem('tachesCariste');
+            if (saved) {
+                tachesCariste = JSON.parse(saved);
+            }
+
+            const savedId = localStorage.getItem('nextTacheId');
+            if (savedId) {
+                nextTacheId = parseInt(savedId);
+            }
+
+            afficherTaches();
+            updateNotificationBadge();
+        } catch (e) {
+            console.error('Erreur chargement tâches:', e);
+        }
+    }
+
+    // ========== MODE SÉLECTION ==========
+    function toggleSelectionMode() {
+        selectionMode = !selectionMode;
+
+        if (selectionMode) {
+            document.body.classList.add('selection-mode');
+            document.getElementById('btnSelectionMode').classList.add('active');
+            document.getElementById('btnMarquerAutre').style.display = 'inline-block';
+            document.getElementById('btnCancelSelection').style.display = 'inline-block';
+            document.getElementById('selectionInfo').classList.add('show');
+            // S'assurer que le conteneur est visible
+            const controls = document.querySelector('.controls');
+            if (controls) controls.style.display = 'flex';
+            montrerToast("Mode sélection activé - Cochez les éléments à marquer comme 'Autre'");
+        } else {
+            cancelSelection();
+        }
+    }
+
+    function cancelSelection() {
+        selectionMode = false;
+        selectedElements.clear();
+        document.body.classList.remove('selection-mode');
+        document.getElementById('btnSelectionMode').classList.remove('active');
+        document.getElementById('btnMarquerAutre').style.display = 'none';
+        document.getElementById('btnCancelSelection').style.display = 'none';
+        document.getElementById('selectionInfo').classList.remove('show');
+
+        document.querySelectorAll('.checkbox-overlay').forEach(cb => {
+            cb.classList.remove('checked');
+        });
+
+        updateSelectionCount();
+    }
+
+    function toggleElementSelection(depot, type, index) {
+        const key = `${depot}-${type}-${index}`;
+
+        if (selectedElements.has(key)) {
+            selectedElements.delete(key);
+        } else {
+            selectedElements.add(key);
+        }
+
+        updateSelectionCount();
+    }
+
+    function updateSelectionCount() {
+        const count = selectedElements.size;
+        document.getElementById('selectionCount').textContent = count;
+        document.getElementById('countSelected').textContent = count;
+    }
+
+    function marquerCommeAutre() {
+        if (selectedElements.size === 0) {
+            montrerToast("Aucun élément sélectionné");
+            return;
+        }
+
+        let count = 0;
+        selectedElements.forEach(key => {
+            const [depot, type, index] = key.split('-');
+            const idx = parseInt(index);
+
+            etatQuais[depot][type][idx] = "autre";
+            count++;
+        });
+
+        const activeTab = document.querySelector('.tab-button.active').dataset.tab;
+        if (activeTab === 'globale') {
+            genererVueGlobale();
+        } else if (activeTab !== 'kpi' && activeTab !== 'cariste') {
+            const container = document.getElementById(`${activeTab}-container`);
+            container.innerHTML = "";
+            const titre = activeTab
+                .replace("depot7","Dépôt 7")
+                .replace("depot56","Dépôt 5/6")
+                .replace("depot3","Dépôt 3")
+                .replace("depot28","Dépôt 2/8°C");
+            genererDepotRow(container, activeTab, titre);
+        }
+
+                mettreAJourTousLesStats();
+sauvegarderLocal();
+
+// SYNCHRO FIREBASE
+syncEtatQuais();
+syncStats();
+
+montrerToast(`${count} éléments marqués comme "Autre"`);
+    cancelSelection();
+    }
+
+    // ========== MODE RETIRER AUTRE ==========
+let retirerAutreMode = false;
+let selectedElementsRetirer = new Set();
+
+function toggleRetirerAutreMode() {
+    retirerAutreMode = !retirerAutreMode;
+    
+    if (retirerAutreMode) {
+        document.body.classList.add('selection-mode');
+        document.getElementById('btnRetirerAutreMode').classList.add('active');
+        document.getElementById('btnConfirmerRetirer').style.display = 'inline-block';
+        document.getElementById('btnCancelRetirer').style.display = 'inline-block';
+        document.getElementById('selectionInfo').classList.add('show');
+        // S'assurer que le conteneur est visible
+        const controls = document.querySelector('.controls');
+        if (controls) controls.style.display = 'flex';
+        montrerToast('Mode retrait "Autre" activé - Cochez les éléments à retirer');
+    } else {
+        cancelRetirerAutre();
+    }
+}
+
+function cancelRetirerAutre() {
+    retirerAutreMode = false;
+    selectedElementsRetirer.clear();
+    document.body.classList.remove('selection-mode');
+    document.getElementById('btnRetirerAutreMode').classList.remove('active');
+    document.getElementById('btnConfirmerRetirer').style.display = 'none';
+    document.getElementById('btnCancelRetirer').style.display = 'none';
+    document.getElementById('selectionInfo').classList.remove('show');
+    
+    document.querySelectorAll('.checkbox-overlay').forEach(cb => {
+        cb.classList.remove('checked');
+    });
+    
+    updateSelectionCountRetirer();
+}
+
+function toggleElementSelectionRetirer(depot, type, index) {
+    const key = `${depot}-${type}-${index}`;
+    
+    if (selectedElementsRetirer.has(key)) {
+        selectedElementsRetirer.delete(key);
+    } else {
+        selectedElementsRetirer.add(key);
+    }
+    
+    updateSelectionCountRetirer();
+}
+
+function updateSelectionCountRetirer() {
+    const count = selectedElementsRetirer.size;
+    document.getElementById('selectionCount').textContent = count;
+    document.getElementById('countSelectedRetirer').textContent = count;
+}
+
+function retirerStatutAutre() {
+    if (selectedElementsRetirer.size === 0) {
+        montrerToast('Aucun élément sélectionné');
+        return;
+    }
+    
+    let count = 0;
+    selectedElementsRetirer.forEach(key => {
+        const [depot, type, index] = key.split('-');
+        const idx = parseInt(index);
+        
+        // Vérifier si l'élément est bien en "autre"
+        if (etatQuais[depot][type][idx] === 'autre') {
+            etatQuais[depot][type][idx] = 'disponible';
+            count++;
+        }
+    });
+    
+    const activeTab = document.querySelector('.tab-button.active').dataset.tab;
+    if (activeTab === 'globale') {
+        genererVueGlobale();
+    } else if (activeTab !== 'kpi' && activeTab !== 'cariste') {
+        const container = document.getElementById(`${activeTab}-container`);
+        container.innerHTML = '';
+        const titre = activeTab
+            .replace('depot7', 'Dépôt 7')
+            .replace('depot56', 'Dépôt 5/6')
+            .replace('depot3', 'Dépôt 3')
+            .replace('depot28', 'Dépôt 2/8°C');
+        genererDepotRow(container, activeTab, titre);
+    }
+    
+    mettreAJourTousLesStats();
+    sauvegarderLocal();
+    syncEtatQuais();
+    
+    cancelRetirerAutre();
+    montrerToast(`${count} élément(s) retiré(s) du statut "Autre"`);
+}
+
+
+    // ========== FONCTIONS STATS ==========
+    function calculerStats(depotKey = null, typeSpecifique = null) {
+        let total = 0, disponible = 0, occupe = 0, etiquete = 0, autre = 0;
+
+        if (depotKey) {
+            const depot = configDepots[depotKey];
+
+            if (typeSpecifique === "portes") {
+                etatQuais[depotKey].portes.forEach(status => {
+                    total++;
+                    if (status === "disponible") disponible++;
+                    else if (status === "occupe") occupe++;
+                    else if (status === "etiquete") etiquete++;
+                    else autre++;
+                });
+            } else if (typeSpecifique === "zones") {
+                etatQuais[depotKey].zones.forEach(status => {
+                    total++;
+                    if (status === "disponible") disponible++;
+                    else if (status === "occupe") occupe++;
+                    else if (status === "etiquete") etiquete++;
+                    else autre++;
+                });
+
+                if (depot.sol && etatQuais[depotKey].sol) {
+                    etatQuais[depotKey].sol.forEach(status => {
+                        total++;
+                        if (status === "disponible") disponible++;
+                        else if (status === "occupe") occupe++;
+                        else if (status === "etiquete") etiquete++;
+                        else autre++;
+                    });
+                }
+            } else {
+                ["portes","zones"].forEach(type => {
+                    etatQuais[depotKey][type].forEach(status => {
+                        total++;
+                        if (status === "disponible") disponible++;
+                        else if (status === "occupe") occupe++;
+                        else if (status === "etiquete") etiquete++;
+                        else autre++;
+                    });
+                });
+
+                if (depot.sol && etatQuais[depotKey].sol) {
+                    etatQuais[depotKey].sol.forEach(status => {
+                        total++;
+                        if (status === "disponible") disponible++;
+                        else if (status === "occupe") occupe++;
+                        else if (status === "etiquete") etiquete++;
+                        else autre++;
+                    });
+                }
+            }
+        } else {
+            Object.keys(configDepots).forEach(key => {
+                const stats = calculerStats(key, typeSpecifique);
+                total       += stats.total;
+                disponible  += stats.disponible;
+                occupe      += stats.occupe;
+                etiquete    += stats.etiquete;
+                autre       += stats.autre;
+            });
+        }
+
+        return { total, disponible, occupe, etiquete, autre };
+    }
+
+    function mettreAJourStatsDepot(depotKey) {
+        const statsContainer = document.getElementById(`stats-section-${depotKey}`);
+        if (!statsContainer) return;
+
+        const statsPortes = calculerStats(depotKey, "portes");
+        const tauxPortes  = statsPortes.total > 0 ? Math.round(((statsPortes.occupe + statsPortes.etiquete) / statsPortes.total) * 100) : 0;
+
+        const statsZones = calculerStats(depotKey, "zones");
+        const tauxZones  = statsZones.total > 0 ? Math.round(((statsZones.occupe + statsZones.etiquete) / statsZones.total) * 100) : 0;
+
+        statsContainer.innerHTML = `
+            <div class="stats-box">
+                <h3>Portes de Quais</h3>
+                <div class="stats-grid">
+                    <div class="stat-card stat-disponible">
+                        <div class="stat-number">${statsPortes.disponible}</div>
+                        <div class="stat-label">Disponibles</div>
+                    </div>
+                    <div class="stat-card stat-occupe">
+                        <div class="stat-number">${statsPortes.occupe}</div>
+                        <div class="stat-label">Occupés</div>
+                    </div>
+                    <div class="stat-card stat-autre">
+                        <div class="stat-number">${statsPortes.autre}</div>
+                        <div class="stat-label">Autres</div>
+                    </div>
+                    <div class="stat-card stat-taux">
+                        <div class="stat-number">${tauxPortes}%</div>
+                        <div class="stat-label">Taux</div>
+                    </div>
+                </div>
+            </div>
+            <div class="stats-box">
+                <h3>Zones + Sols</h3>
+                <div class="stats-grid">
+                    <div class="stat-card stat-disponible">
+                        <div class="stat-number">${statsZones.disponible}</div>
+                        <div class="stat-label">Disponibles</div>
+                    </div>
+                    <div class="stat-card stat-occupe">
+                        <div class="stat-number">${statsZones.occupe}</div>
+                        <div class="stat-label">Occupés</div>
+                    </div>
+                    <div class="stat-card" style="background: #fff7ed; border-color: #f97316;">
+                        <div class="stat-number" style="color: #ea580c;">${statsZones.etiquete}</div>
+                        <div class="stat-label">Étiquetés</div>
+                    </div>
+                    <div class="stat-card stat-autre">
+                        <div class="stat-number">${statsZones.autre}</div>
+                        <div class="stat-label">Autres</div>
+                    </div>
+                    <div class="stat-card stat-taux">
+                        <div class="stat-number">${tauxZones}%</div>
+                        <div class="stat-label">Taux</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function mettreAJourStatsGlobalesSeparees() {
+        const statsPortes = calculerStats(null, "portes");
+        const tauxPortes  = statsPortes.total > 0 ? Math.round(((statsPortes.occupe + statsPortes.etiquete) / statsPortes.total) * 100) : 0;
+
+        document.getElementById("stats-portes-globale").innerHTML = `
+            <div class="stat-card stat-disponible">
+                <div class="stat-number">${statsPortes.disponible}</div>
+                <div class="stat-label">Disponibles</div>
+            </div>
+            <div class="stat-card stat-occupe">
+                <div class="stat-number">${statsPortes.occupe}</div>
+                <div class="stat-label">Occupés</div>
+            </div>
+            <div class="stat-card stat-autre">
+                <div class="stat-number">${statsPortes.autre}</div>
+                <div class="stat-label">Autres</div>
+            </div>
+            <div class="stat-card stat-taux">
+                <div class="stat-number">${tauxPortes}%</div>
+                <div class="stat-label">Taux Occupation</div>
+            </div>
+        `;
+
+        const statsZones = calculerStats(null, "zones");
+        const tauxZones  = statsZones.total > 0 ? Math.round(((statsZones.occupe + statsZones.etiquete) / statsZones.total) * 100) : 0;
+
+        document.getElementById("stats-zones-globale").innerHTML = `
+            <div class="stat-card stat-disponible">
+                <div class="stat-number">${statsZones.disponible}</div>
+                <div class="stat-label">Disponibles</div>
+            </div>
+            <div class="stat-card stat-occupe">
+                <div class="stat-number">${statsZones.occupe}</div>
+                <div class="stat-label">Occupés</div>
+            </div>
+            <div class="stat-card" style="background: #fff7ed; border-color: #f97316;">
+                <div class="stat-number" style="color: #ea580c;">${statsZones.etiquete}</div>
+                <div class="stat-label">Étiquetés</div>
+            </div>
+            <div class="stat-card stat-autre">
+                <div class="stat-number">${statsZones.autre}</div>
+                <div class="stat-label">Autres</div>
+            </div>
+            <div class="stat-card stat-taux">
+                <div class="stat-number">${tauxZones}%</div>
+                <div class="stat-label">Taux Occupation</div>
+            </div>
+        `;
+    }
+
+    function mettreAJourKPI() {
+        const statsGlobal = calculerStats();
+        const tauxGlobal = statsGlobal.total > 0 ? Math.round(((statsGlobal.occupe + statsGlobal.etiquete) / statsGlobal.total) * 100) : 0;
+
+        document.getElementById("kpi-taux-global").textContent = tauxGlobal + "%";
+        document.getElementById("kpi-total-dechargements").textContent = totalDechargements;
+        document.getElementById("kpi-total-occupe").textContent = statsGlobal.occupe + statsGlobal.etiquete;
+
+        // Temps moyen
+        let totalDureeMs = 0;
+        let totalNbDech = 0;
+
+        Object.keys(historiqueQuais).forEach(depot => {
+            ["portes", "zones", "sol"].forEach(type => {
+                if (historiqueQuais[depot][type]) {
+                    historiqueQuais[depot][type].forEach(hist => {
+                        totalDureeMs += hist.totalDuree;
+                        totalNbDech += hist.nbDechargements;
+                    });
+                }
+            });
+        });
+
+        const moyenneMinutes = totalNbDech > 0 ? Math.round(totalDureeMs / totalNbDech / 60000) : 0;
+        document.getElementById("kpi-temps-moyen").textContent = moyenneMinutes + "m";
+
+        // Dépôt le plus occupé
+        let maxOccupe = 0;
+        let depotMaxOccupe = "-";
+        Object.keys(configDepots).forEach(depot => {
+            const stats = calculerStats(depot);
+            if ((stats.occupe + stats.etiquete) > maxOccupe) {
+                maxOccupe = stats.occupe + stats.etiquete;
+                depotMaxOccupe = depot
+                    .replace("depot7","Dépôt 7")
+                    .replace("depot56","Dépôt 5/6")
+                    .replace("depot3","Dépôt 3")
+                    .replace("depot28","Dépôt 2/8°C");
+            }
+        });
+        document.getElementById("kpi-depot-plus-occupe").textContent = depotMaxOccupe;
+    }
+
+    function mettreAJourTousLesStats() {
+        mettreAJourStatsGlobalesSeparees();
+        Object.keys(configDepots).forEach(depot => {
+            mettreAJourStatsDepot(depot);
+        });
+        mettreAJourKPI();
+    }
+
+    // ========== GESTION DES CLICS ==========
+    function toggleQuai(depot, type, index) {
+    if (selectionMode) {
+        toggleElementSelection(depot, type, index);
+        const checkbox = event.target.closest('.porte-item, .zone-item, .sol-item')?.querySelector('.checkbox-overlay');
+        if (checkbox) {
+            checkbox.classList.toggle('checked');
+        }
+        return;
+    }
+
+    const currentStatus = etatQuais[depot][type][index];
+    let newStatus;
+
+        // Bloquer si l'élément est en "Autre"
+    if (currentStatus === 'autre') {
+        montrerToast('Cet élément est en statut "Autre". Utilisez le bouton "Retirer statut Autre" pour le modifier.');
+        return;
+    }
+
+    // POUR LES PORTES : Cycle simple disponible → occupe → disponible
+    if (type === "portes") {
+        if (currentStatus === "disponible") {
+            newStatus = "occupe";
+            historiqueQuais[depot][type][index].timestampDebut = Date.now();
+
+        } else if (currentStatus === "occupe") {
+            newStatus = "disponible";
+            const hist = historiqueQuais[depot][type][index];
+            if (hist.timestampDebut) {
+                const duree = Date.now() - hist.timestampDebut;
+                hist.totalDuree += duree;
+                hist.nbDechargements++;
+                hist.timestampDebut = null;
+                totalDechargements++;
+            }
+        } else {
+            newStatus = "disponible";
+        }
+    }
+    // POUR LES ZONES ET SOL : Cycle avec etiquete disponible → occupe → etiquete → disponible
+    else if (type === "zones" || type === "sol") {
+        if (currentStatus === "disponible") {
+            newStatus = "occupe";
+            historiqueQuais[depot][type][index].timestampDebut = Date.now();
+
+        } else if (currentStatus === "occupe") {
+            newStatus = "etiquete";
+            
+            // Créer tâche cariste UNIQUEMENT quand on passe en "étiquetés" et sans doublon
+            const tacheExiste = tachesCariste.some(t => 
+                t.depot === depot && 
+                t.type === type && 
+                t.index === index && 
+                t.status !== 'terminee'
+            );
+            
+            if (!tacheExiste) {
+                const nomZone = configDepots[depot][type][index];
+                creerTacheCariste(depot, type, index, nomZone);
+            }
+
+        } else if (currentStatus === "etiquete") {
+            newStatus = "disponible";
+            const hist = historiqueQuais[depot][type][index];
+            if (hist.timestampDebut) {
+                const duree = Date.now() - hist.timestampDebut;
+                hist.totalDuree += duree;
+                hist.nbDechargements++;
+                hist.timestampDebut = null;
+                totalDechargements++;
+            }
+        } else {
+            newStatus = "disponible";
+        }
+    }
+    else {
+        newStatus = "disponible";
+    }
+
+    etatQuais[depot][type][index] = newStatus;
+    totalModifications++;
+
+    const activeTab = document.querySelector('.tab-button.active').dataset.tab;
+    if (activeTab === 'globale') {
+        genererVueGlobale();
+    } else if (activeTab !== 'kpi' && activeTab !== 'cariste') {
+        const container = document.getElementById(`${activeTab}-container`);
+        container.innerHTML = "";
+        const titre = activeTab
+            .replace("depot7","Dépôt 7")
+            .replace("depot56","Dépôt 5/6")
+            .replace("depot3","Dépôt 3")
+            .replace("depot28","Dépôt 2/8°C");
+        genererDepotRow(container, activeTab, titre);
+    }
+
+    mettreAJourTousLesStats();
+sauvegarderLocal();
+
+// SYNCHRO FIREBASE
+syncEtatQuais();
+syncHistorique();
+syncStats();
+
+}
+
+
+    // ========== GÉNÉRATION DES DÉPÔTS ==========
+  
+function genererDepotRow(container, depotKey, titre) {
+    const depot = configDepots[depotKey];
+    if (!depot) return;
+    
+    const row = document.createElement('div');
+    row.className = 'depot-row';
+    
+    const header = document.createElement('div');
+    header.className = 'depot-header';
+    header.innerHTML = `
+        <div class="depot-title">${titre}</div>
+        <div class="depot-count">${depot.portes.length} Portes · ${depot.zones.length} Zones${depot.sol ? ` · ${depot.sol.length} Sol` : ''}</div>
+    `;
+    row.appendChild(header);
+    
+    // NOUVEAU : Structure spéciale pour depot56 et depot3
+    if (depotKey === 'depot56' || depotKey === 'depot3') {
+        // ========== SECTION PORTES, ZONES & SOL ==========
+        const zonesSection = document.createElement('div');
+        zonesSection.className = 'zones-section';
+        zonesSection.innerHTML = '<div class="section-title">Portes, Zones & Sols</div>';
+        
+        const quaisContainer = document.createElement('div');
+        quaisContainer.className = 'quais-container';
+        
+        // Portes et Zones
+        for (let i = 0; i < depot.portes.length; i++) {
+            const pairDiv = document.createElement('div');
+            pairDiv.className = 'quai-pair';
+            
+            // PORTE
+            const porteDiv = document.createElement('div');
+            porteDiv.className = `porte-item status-${etatQuais[depotKey].portes[i]}`;
+            porteDiv.textContent = depot.portes[i];
+            porteDiv.addEventListener('click', function(e) {
+                if (e.target.classList.contains('checkbox-overlay')) return;
+                toggleQuai(depotKey, 'portes', i);
+            });
+            const checkboxPorte = document.createElement('div');
+            checkboxPorte.className = 'checkbox-overlay';
+            checkboxPorte.setAttribute('data-depot', depotKey);
+            checkboxPorte.setAttribute('data-type', 'portes');
+            checkboxPorte.setAttribute('data-index', i);
+                        checkboxPorte.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (selectionMode) {
+                    this.classList.toggle('checked');
+                    toggleElementSelection(depotKey, 'portes', i);
+                } else if (retirerAutreMode) {
+                    if (etatQuais[depotKey].portes[i] === 'autre') {
+                        this.classList.toggle('checked');
+                        toggleElementSelectionRetirer(depotKey, 'portes', i);
+                    } else {
+                        montrerToast('Cet élément n\'est pas en statut "Autre"');
+                    }
+                }
+            });
+
+            porteDiv.appendChild(checkboxPorte);
+            pairDiv.appendChild(porteDiv);
+            
+            // ZONE
+            if (i < depot.zones.length) {
+                const zoneDiv = document.createElement('div');
+                zoneDiv.className = `zone-item status-${etatQuais[depotKey].zones[i]}`;
+                zoneDiv.textContent = depot.zones[i];
+                zoneDiv.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('checkbox-overlay')) return;
+                    toggleQuai(depotKey, 'zones', i);
+                });
+                const checkboxZone = document.createElement('div');
+                checkboxZone.className = 'checkbox-overlay';
+                checkboxZone.setAttribute('data-depot', depotKey);
+                checkboxZone.setAttribute('data-type', 'zones');
+                checkboxZone.setAttribute('data-index', i);
+                                checkboxZone.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (selectionMode) {
+                        this.classList.toggle('checked');
+                        toggleElementSelection(depotKey, 'zones', i);
+                    } else if (retirerAutreMode) {
+                        if (etatQuais[depotKey].zones[i] === 'autre') {
+                            this.classList.toggle('checked');
+                            toggleElementSelectionRetirer(depotKey, 'zones', i);
+                        } else {
+                            montrerToast('Cet élément n\'est pas en statut "Autre"');
+                        }
+                    }
+                });
+
+                zoneDiv.appendChild(checkboxZone);
+                pairDiv.appendChild(zoneDiv);
+            }
+            
+            quaisContainer.appendChild(pairDiv);
+        }
+        
+        zonesSection.appendChild(quaisContainer);
+        row.appendChild(zonesSection);
+        
+        // ========== SÉPARATEUR ==========
+        if (depot.sol && depot.sol.length > 0) {
+            // S'assurer que etatQuais[depotKey].sol existe
+            if (!etatQuais[depotKey].sol) {
+                etatQuais[depotKey].sol = [];
+            }
+            
+            const separator = document.createElement('div');
+            separator.className = 'section-separator';
+            row.appendChild(separator);
+            
+            // ========== SOLS (SANS TITRE) ==========
+const solContainer = document.createElement('div');
+solContainer.className = 'quais-container sol-section';
+solContainer.style.marginTop = '1rem';
+
+            
+            depot.sol.forEach((solNom, i) => {
+                // S'assurer que l'état existe pour cet emplacement
+                if (etatQuais[depotKey].sol[i] === undefined) {
+                    etatQuais[depotKey].sol[i] = "disponible";
+                }
+                
+                // Ajouter une séparation avec label avant les nouveaux emplacements (S13bis à S19bis pour depot7)
+                if (depotKey === 'depot7' && solNom === 'S13bis') {
+                    const solSeparator = document.createElement('div');
+                    solSeparator.className = 'separator-with-label';
+                    
+                    const solLabel = document.createElement('span');
+                    solLabel.textContent = 'Zone sous douane';
+                    solSeparator.appendChild(solLabel);
+                    
+                    solContainer.appendChild(solSeparator);
+                }
+                
+                const solDiv = document.createElement('div');
+                solDiv.className = `sol-item status-${etatQuais[depotKey].sol[i]}`;
+                solDiv.textContent = solNom;
+                solDiv.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('checkbox-overlay')) return;
+                    toggleQuai(depotKey, 'sol', i);
+                });
+                const checkboxSol = document.createElement('div');
+                checkboxSol.className = 'checkbox-overlay';
+                checkboxSol.setAttribute('data-depot', depotKey);
+                checkboxSol.setAttribute('data-type', 'sol');
+                checkboxSol.setAttribute('data-index', i);
+                                checkboxSol.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (selectionMode) {
+                        this.classList.toggle('checked');
+                        toggleElementSelection(depotKey, 'sol', i);
+                    } else if (retirerAutreMode) {
+                        if (etatQuais[depotKey].sol[i] === 'autre') {
+                            this.classList.toggle('checked');
+                            toggleElementSelectionRetirer(depotKey, 'sol', i);
+                        } else {
+                            montrerToast('Cet élément n\'est pas en statut "Autre"');
+                        }
+                    }
+                });
+
+                solDiv.appendChild(checkboxSol);
+                solContainer.appendChild(solDiv);
+            });
+            
+            row.appendChild(solContainer);
+        }
+    } else {
+        // ========== STRUCTURE NORMALE POUR DEPOT7 ET DEPOT28 ==========
+        const quaisContainer = document.createElement('div');
+        quaisContainer.className = 'quais-container';
+        
+        for (let i = 0; i < depot.portes.length; i++) {
+            const pairDiv = document.createElement('div');
+            pairDiv.className = 'quai-pair';
+            
+            const porteDiv = document.createElement('div');
+            porteDiv.className = `porte-item status-${etatQuais[depotKey].portes[i]}`;
+            porteDiv.textContent = depot.portes[i];
+            porteDiv.addEventListener('click', function(e) {
+                if (e.target.classList.contains('checkbox-overlay')) return;
+                toggleQuai(depotKey, 'portes', i);
+            });
+            const checkboxPorte = document.createElement('div');
+            checkboxPorte.className = 'checkbox-overlay';
+            checkboxPorte.setAttribute('data-depot', depotKey);
+            checkboxPorte.setAttribute('data-type', 'portes');
+            checkboxPorte.setAttribute('data-index', i);
+                        checkboxPorte.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (selectionMode) {
+                    this.classList.toggle('checked');
+                    toggleElementSelection(depotKey, 'portes', i);
+                } else if (retirerAutreMode) {
+                    if (etatQuais[depotKey].portes[i] === 'autre') {
+                        this.classList.toggle('checked');
+                        toggleElementSelectionRetirer(depotKey, 'portes', i);
+                    } else {
+                        montrerToast('Cet élément n\'est pas en statut "Autre"');
+                    }
+                }
+            });
+
+            porteDiv.appendChild(checkboxPorte);
+            pairDiv.appendChild(porteDiv);
+            
+            if (i < depot.zones.length) {
+                const zoneDiv = document.createElement('div');
+                zoneDiv.className = `zone-item status-${etatQuais[depotKey].zones[i]}`;
+                zoneDiv.textContent = depot.zones[i];
+                zoneDiv.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('checkbox-overlay')) return;
+                    toggleQuai(depotKey, 'zones', i);
+                });
+                const checkboxZone = document.createElement('div');
+                checkboxZone.className = 'checkbox-overlay';
+                checkboxZone.setAttribute('data-depot', depotKey);
+                checkboxZone.setAttribute('data-type', 'zones');
+                checkboxZone.setAttribute('data-index', i);
+                                checkboxZone.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (selectionMode) {
+                        this.classList.toggle('checked');
+                        toggleElementSelection(depotKey, 'zones', i);
+                    } else if (retirerAutreMode) {
+                        if (etatQuais[depotKey].zones[i] === 'autre') {
+                            this.classList.toggle('checked');
+                            toggleElementSelectionRetirer(depotKey, 'zones', i);
+                        } else {
+                            montrerToast('Cet élément n\'est pas en statut "Autre"');
+                        }
+                    }
+                });
+
+                zoneDiv.appendChild(checkboxZone);
+                pairDiv.appendChild(zoneDiv);
+            }
+            
+            quaisContainer.appendChild(pairDiv);
+        }
+        
+        if (depot.sol && depot.sol.length > 0) {
+            // S'assurer que etatQuais[depotKey].sol existe
+            if (!etatQuais[depotKey].sol) {
+                etatQuais[depotKey].sol = [];
+            }
+            
+            depot.sol.forEach((solNom, i) => {
+                // S'assurer que l'état existe pour cet emplacement
+                if (etatQuais[depotKey].sol[i] === undefined) {
+                    etatQuais[depotKey].sol[i] = "disponible";
+                }
+                
+                // Ajouter une séparation avec label avant les nouveaux emplacements (S13bis à S19bis pour depot7)
+                if (depotKey === 'depot7' && solNom === 'S13bis') {
+                    const solSeparator = document.createElement('div');
+                    solSeparator.className = 'separator-with-label';
+                    
+                    const solLabel = document.createElement('span');
+                    solLabel.textContent = 'Zone sous douane';
+                    solSeparator.appendChild(solLabel);
+                    
+                    quaisContainer.appendChild(solSeparator);
+                }
+                
+                const solDiv = document.createElement('div');
+                solDiv.className = `sol-item status-${etatQuais[depotKey].sol[i]}`;
+                solDiv.textContent = solNom;
+                solDiv.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('checkbox-overlay')) return;
+                    toggleQuai(depotKey, 'sol', i);
+                });
+                const checkboxSol = document.createElement('div');
+                checkboxSol.className = 'checkbox-overlay';
+                checkboxSol.setAttribute('data-depot', depotKey);
+                checkboxSol.setAttribute('data-type', 'sol');
+                checkboxSol.setAttribute('data-index', i);
+                                checkboxSol.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (selectionMode) {
+                        this.classList.toggle('checked');
+                        toggleElementSelection(depotKey, 'sol', i);
+                    } else if (retirerAutreMode) {
+                        if (etatQuais[depotKey].sol[i] === 'autre') {
+                            this.classList.toggle('checked');
+                            toggleElementSelectionRetirer(depotKey, 'sol', i);
+                        } else {
+                            montrerToast('Cet élément n\'est pas en statut "Autre"');
+                        }
+                    }
+                });
+
+                solDiv.appendChild(checkboxSol);
+                quaisContainer.appendChild(solDiv);
+            });
+        }
+        
+        row.appendChild(quaisContainer);
+    }
+    
+    container.appendChild(row);
+}
+
+
+
+    function genererVueGlobale() {
+        const container = document.getElementById('depots-container');
+        container.innerHTML = '';
+
+        genererDepotRow(container, 'depot7', 'Dépôt 7');
+        genererDepotRow(container, 'depot56', 'Dépôt 5/6');
+        genererDepotRow(container, 'depot3', 'Dépôt 3');
+        genererDepotRow(container, 'depot28', 'Dépôt 2/8°C');
+    }
+
+    // ========== TABS ==========
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const tabId = btn.dataset.tab;
+            document.getElementById(tabId).classList.add('active');
+
+            if (tabId === 'globale') {
+                genererVueGlobale();
+                mettreAJourStatsGlobalesSeparees();
+            } else if (tabId === 'kpi') {
+                mettreAJourKPI();
+            } else if (tabId === 'cariste') {
+                afficherTaches();
+            } else if (tabId !== 'kpi') {
+                const container = document.getElementById(`${tabId}-container`);
+                container.innerHTML = "";
+                const titre = tabId
+                    .replace("depot7","Dépôt 7")
+                    .replace("depot56","Dépôt 5/6")
+                    .replace("depot3","Dépôt 3")
+                    .replace("depot28","Dépôt 2/8°C");
+                genererDepotRow(container, tabId, titre);
+                mettreAJourStatsDepot(tabId);
+            }
+
+            // Hide legend for cariste tab
+            const legend = document.querySelector('.legend');
+            legend.style.display = (tabId === 'cariste') ? 'none' : 'flex';
+        });
+    });
+
+    // ========== BOUTONS UTILITAIRES ==========
+    function resetAll() {
+        if (!confirm("Êtes-vous sûr de vouloir tout réinitialiser ?")) return;
+
+        Object.keys(configDepots).forEach(depot => {
+            // S'assurer que les tableaux sol existent
+            if (!etatQuais[depot]) {
+                etatQuais[depot] = { portes: [], zones: [], sol: [] };
+            }
+            if (!etatQuais[depot].sol) {
+                etatQuais[depot].sol = [];
+            }
+            if (!historiqueQuais[depot]) {
+                historiqueQuais[depot] = { portes: [], zones: [], sol: [] };
+            }
+            if (!historiqueQuais[depot].sol) {
+                historiqueQuais[depot].sol = [];
+            }
+            
+            // Conserver les statuts "autre" lors du reset
+            etatQuais[depot] = {
+                portes: configDepots[depot].portes.map((_, i) => 
+                    etatQuais[depot].portes && etatQuais[depot].portes[i] === "autre" ? "autre" : "disponible"
+                ),
+                zones:  configDepots[depot].zones.map((_, i) => 
+                    etatQuais[depot].zones && etatQuais[depot].zones[i] === "autre" ? "autre" : "disponible"
+                ),
+                sol:    configDepots[depot].sol ? configDepots[depot].sol.map((_, i) => 
+                    etatQuais[depot].sol && etatQuais[depot].sol[i] === "autre" ? "autre" : "disponible"
+                ) : []
+            };
+
+            historiqueQuais[depot] = {
+                portes: configDepots[depot].portes.map((_, i) => {
+                    // Conserver l'historique des éléments en statut "autre"
+                    if (etatQuais[depot].portes && etatQuais[depot].portes[i] === "autre") {
+                        return historiqueQuais[depot].portes[i];
+                    }
+                    return { timestampDebut: null, totalDuree: 0, nbDechargements: 0 };
+                }),
+                zones:  configDepots[depot].zones.map((_, i) => {
+                    if (etatQuais[depot].zones && etatQuais[depot].zones[i] === "autre") {
+                        return historiqueQuais[depot].zones[i];
+                    }
+                    return { timestampDebut: null, totalDuree: 0, nbDechargements: 0 };
+                }),
+                sol:    configDepots[depot].sol ? configDepots[depot].sol.map((_, i) => {
+                    if (etatQuais[depot].sol && etatQuais[depot].sol[i] === "autre") {
+                        return historiqueQuais[depot].sol[i];
+                    }
+                    return { timestampDebut: null, totalDuree: 0, nbDechargements: 0 };
+                }) : []
+            };
+        });
+
+        totalModifications = 0;
+        totalDechargements = 0;
+        tachesCariste = [];
+        nextTacheId = 1;
+
+                genererVueGlobale();
+        mettreAJourTousLesStats();
+        sauvegarderLocal();
+        sauvegarderTaches();
+        afficherTaches();
+        updateNotificationBadge();
+
+        // 🔥 SYNCHRO FIREBASE → L'AUTRE ÉCRAN VOIT LE RESET
+        syncEtatQuais();
+        syncHistorique();
+        syncTaches();
+        syncStats();
+
+        montrerToast("Rinitialisation complète effectuée");
+    }
+
+    function exportToExcel() {
+        const data = [];
+        data.push(["Dépôt", "Type", "Numéro", "Statut", "Nb Déchargements", "Durée Totale (min)"]);
+
+        Object.keys(configDepots).forEach(depot => {
+            // Vérifier que les structures de données existent
+            if (!etatQuais[depot]) {
+                etatQuais[depot] = {
+                    portes: configDepots[depot].portes.map(() => "disponible"),
+                    zones:  configDepots[depot].zones.map(() => "disponible"),
+                    sol:    configDepots[depot].sol ? configDepots[depot].sol.map(() => "disponible") : []
+                };
+            }
+            
+            const depotNom = depot
+                .replace("depot7","Dépôt 7")
+                .replace("depot56","Dépôt 5/6")
+                .replace("depot3","Dépôt 3")
+                .replace("depot28","Dépôt 2/8°C");
+
+            ["portes", "zones", "sol"].forEach(type => {
+                if (configDepots[depot][type] && etatQuais[depot][type]) {
+                    configDepots[depot][type].forEach((nom, i) => {
+                        if (etatQuais[depot][type][i] !== undefined && historiqueQuais[depot][type][i]) {
+                            const statut = etatQuais[depot][type][i];
+                            const hist = historiqueQuais[depot][type][i];
+                            const dureeMin = Math.round(hist.totalDuree / 60000);
+
+                            data.push([
+                                depotNom,
+                                type === 'portes' ? 'Porte' : (type === 'zones' ? 'Zone' : 'Sol'),
+                                nom,
+                                statut.charAt(0).toUpperCase() + statut.slice(1),
+                                hist.nbDechargements,
+                                dureeMin
+                            ]);
+                        }
+                    });
+                }
+            });
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Dock'n'Load");
+        XLSX.writeFile(wb, `DockNLoad_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+        montrerToast("✓ Export Excel généré avec succès");
+    }
+
+    function montrerToast(message) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Alias pour compatibilité
+    function showToast(message) {
+        montrerToast(message);
+    }
+
+    // ========== SAUVEGARDE / CHARGEMENT ==========
+    function sauvegarderLocal() {
+        try {
+            localStorage.setItem('etatQuais', JSON.stringify(etatQuais));
+            localStorage.setItem('historiqueQuais', JSON.stringify(historiqueQuais));
+            localStorage.setItem('totalModifications', totalModifications.toString());
+            localStorage.setItem('totalDechargements', totalDechargements.toString());
+        } catch (e) {
+            console.error('Erreur sauvegarde:', e);
+        }
+    }
+
+    // Fonction pour synchroniser vers Firebase (appelée SEULEMENT par actions utilisateur)
+    function sauvegarderEtSynchroniserFirebase() {
+        sauvegarderLocal();
+        if (firebaseInitialized) {
+            syncEtatQuais();
+            syncHistorique();
+            syncStats();
+        }
+    }
+
+    function chargerLocal() {
+        try {
+            const savedEtat = localStorage.getItem('etatQuais');
+            if (savedEtat) {
+                Object.assign(etatQuais, JSON.parse(savedEtat));
+            }
+
+            const savedHist = localStorage.getItem('historiqueQuais');
+            if (savedHist) {
+                Object.assign(historiqueQuais, JSON.parse(savedHist));
+            }
+
+            const savedMod = localStorage.getItem('totalModifications');
+            if (savedMod) {
+                totalModifications = parseInt(savedMod);
+            }
+
+            const savedDech = localStorage.getItem('totalDechargements');
+            if (savedDech) {
+                totalDechargements = parseInt(savedDech);
+            }
+            
+            // Vérifier et ajouter les emplacements manquants après chargement local
+            ensureDataStructureIsComplete();
+        } catch (e) {
+            console.error('Erreur chargement:', e);
+        }
+    }
+    
+    function ensureDataStructureIsComplete() {
+        Object.keys(configDepots).forEach(depot => {
+            // Vérifier etatQuais
+            if (!etatQuais[depot]) {
+                etatQuais[depot] = {
+                    portes: configDepots[depot].portes.map(() => "disponible"),
+                    zones:  configDepots[depot].zones.map(() => "disponible"),
+                    sol:    configDepots[depot].sol ? configDepots[depot].sol.map(() => "disponible") : []
+                };
+            } else {
+                // Vérifier que les portes et zones sont complètes
+                if (!etatQuais[depot].portes || etatQuais[depot].portes.length < configDepots[depot].portes.length) {
+                    const existing = etatQuais[depot].portes || [];
+                    etatQuais[depot].portes = configDepots[depot].portes.map((_, i) => 
+                        existing[i] !== undefined ? existing[i] : "disponible"
+                    );
+                }
+                if (!etatQuais[depot].zones || etatQuais[depot].zones.length < configDepots[depot].zones.length) {
+                    const existing = etatQuais[depot].zones || [];
+                    etatQuais[depot].zones = configDepots[depot].zones.map((_, i) => 
+                        existing[i] !== undefined ? existing[i] : "disponible"
+                    );
+                }
+                if (configDepots[depot].sol && configDepots[depot].sol.length > 0) {
+                    if (!etatQuais[depot].sol || etatQuais[depot].sol.length < configDepots[depot].sol.length) {
+                        const existing = etatQuais[depot].sol || [];
+                        etatQuais[depot].sol = configDepots[depot].sol.map((_, i) => 
+                            existing[i] !== undefined ? existing[i] : "disponible"
+                        );
+                    }
+                }
+            }
+            
+            // Vérifier historiqueQuais
+            if (!historiqueQuais[depot]) {
+                historiqueQuais[depot] = {
+                    portes: configDepots[depot].portes.map(() => ({ timestampDebut: null, totalDuree: 0, nbDechargements: 0 })),
+                    zones:  configDepots[depot].zones.map(() => ({ timestampDebut: null, totalDuree: 0, nbDechargements: 0 })),
+                    sol:    configDepots[depot].sol ? configDepots[depot].sol.map(() => ({ timestampDebut: null, totalDuree: 0, nbDechargements: 0 })) : []
+                };
+            } else {
+                // Vérifier que les portes et zones sont complètes
+                if (!historiqueQuais[depot].portes || historiqueQuais[depot].portes.length < configDepots[depot].portes.length) {
+                    const existing = historiqueQuais[depot].portes || [];
+                    historiqueQuais[depot].portes = configDepots[depot].portes.map((_, i) => 
+                        existing[i] !== undefined ? existing[i] : { timestampDebut: null, totalDuree: 0, nbDechargements: 0 }
+                    );
+                }
+                if (!historiqueQuais[depot].zones || historiqueQuais[depot].zones.length < configDepots[depot].zones.length) {
+                    const existing = historiqueQuais[depot].zones || [];
+                    historiqueQuais[depot].zones = configDepots[depot].zones.map((_, i) => 
+                        existing[i] !== undefined ? existing[i] : { timestampDebut: null, totalDuree: 0, nbDechargements: 0 }
+                    );
+                }
+                if (configDepots[depot].sol && configDepots[depot].sol.length > 0) {
+                    if (!historiqueQuais[depot].sol || historiqueQuais[depot].sol.length < configDepots[depot].sol.length) {
+                        const existing = historiqueQuais[depot].sol || [];
+                        historiqueQuais[depot].sol = configDepots[depot].sol.map((_, i) => 
+                            existing[i] !== undefined ? existing[i] : { timestampDebut: null, totalDuree: 0, nbDechargements: 0 }
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    // ========== BOUTON RETOUR EN HAUT ==========
+    window.addEventListener('scroll', () => {
+        const btn = document.getElementById('backToTop');
+        if (window.scrollY > 300) {
+            btn.classList.add('show');
+        } else {
+            btn.classList.remove('show');
+        }
+    });
+
+    document.getElementById('backToTop').addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // ========== NOUVEAU SYSTÈME RÔLES ==========
+const CODE_RESPONSABLE = 'tbqb'; // 
+
+let currentRole = null;
+
+function selectRole(role) {
+    if (role === 'responsable') { showResponsableCode(); return; }
+    currentRole = role;
+    setUserInfo(role);
+    hideLoginOverlay();
+    showToast(`Bienvenue ${getRoleDisplay(role)} !`);
+}
+
+function showResponsableCode() {
+    document.getElementById('responsableCodeSection').style.display = 'block';
+    document.getElementById('responsableCode').focus();
+}
+
+function checkResponsableCode() {
+    const code = document.getElementById('responsableCode').value;
+    if (code === CODE_RESPONSABLE) {
+        currentRole = 'responsable';
+        setUserInfo('responsable');
+        hideLoginOverlay();
+        showToast('Accès Responsable confirmé !');
+        document.getElementById('responsableCodeSection').style.display = 'none';
+    } else {
+        document.getElementById('responsableError').textContent = 'Code incorrect';
+        document.getElementById('responsableError').style.display = 'block';
+        document.getElementById('responsableCode').value = '';
+    }
+}
+
+function getRoleDisplay(role) {
+    const names = { cariste: 'Cariste', reception: 'Réception', responsable: 'Responsable' };
+    return names[role] || role;
+}
+
+function setUserInfo(role) {
+    document.getElementById('userName').textContent = getRoleDisplay(role);
+    document.getElementById('userRole').textContent = role.toUpperCase();
+    document.getElementById('userInfo').style.display = 'flex';
+    
+    // Adapter l'interface selon le rôle
+    adaptInterfaceForRole(role);
+}
+
+function hideLoginOverlay() {
+    document.getElementById('loginOverlay').style.display = 'none';
+}
+
+function logout() {
+    currentRole = null;
+    document.getElementById('userInfo').style.display = 'none';
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.querySelector('[data-tab="globale"]').click();
+    showToast('Déconnexion');
+}
+
+// Init (remplace l'ancienne)
+window.addEventListener('DOMContentLoaded', function() {
+    // Charger données locales (quais, taches, etc.)
+    chargerLocal();
+    chargerTaches();
+    
+    // Initialiser Firebase pour synchronisation temps réel
+    initializeFirebase();
+    
+    // Générer vue initiale
+    genererVueGlobale();
+    mettreAJourTousLesStats();
+    
+    console.log('✅ Dock\'n\'Load prêt - Sélection rôle');
+});
+
+</script>
+</body>
+</html>
